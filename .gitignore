@@ -1,0 +1,9 @@
+.venv/
+env/
+__pycache__/
+
+.vscode/
+.idea/
+*.sublime-workspace
+
+*.glade~
