@@ -157,7 +157,10 @@ class Record:
         self.song_id = song_id
         self.fp = fp
         self.created_ts = created_ts
-        self.updated_ts = updated_ts
+        if updated_ts is None:
+            self.updated_ts = 0
+        else:
+            self.updated_ts = updated_ts
         self.basename = basename
         self.dirname = dirname
         self.added_ts = added_ts
