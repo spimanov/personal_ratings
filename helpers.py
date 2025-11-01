@@ -103,7 +103,7 @@ def get_song_stats(song: SongWrapper) -> SongStats:
     if attrs.PLAY_COUNT in song:
         pc = song(attrs.PLAY_COUNT)
     if attrs.RATING in song:
-        rt = song(attrs.RATING)
+        rt = int(song(attrs.RATING) * attrs.RAITING_SCALE)
     if attrs.SKIP_COUNT in song:
         sc = song(attrs.SKIP_COUNT)
     if attrs.PLAYLISTS in song:
