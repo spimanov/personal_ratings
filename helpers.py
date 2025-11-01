@@ -157,10 +157,7 @@ class Record:
         self.song_id = song_id
         self.fp = fp
         self.created_ts = created_ts
-        if updated_ts is None:
-            self.updated_ts = 0
-        else:
-            self.updated_ts = updated_ts
+        self.updated_ts = updated_ts
         self.basename = basename
         self.dirname = dirname
         self.added_ts = added_ts
@@ -208,10 +205,11 @@ class Record:
             return True
         if self.stats[IDX_PLAY_COUNT] < other.stats[IDX_PLAY_COUNT]:
             return False
-        if self.updated_ts > other.updated_ts:
-            return True
-        if self.updated_ts < other.updated_ts:
-            return False
+        if (self.updated_ts is not None) and (other.updated_ts is not None):
+            if self.updated_ts > other.updated_ts:
+                return True
+            if self.updated_ts < other.updated_ts:
+                return False
         if self.created_ts > other.created_ts:
             return True
 
