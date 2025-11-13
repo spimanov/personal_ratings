@@ -78,9 +78,7 @@ class AsyncUpdChanged(AsyncUpdater[FPContext]):
                         dups.append(SongWrapper(s))
 
         if dups:
-            print_d(f"______________________ ENTER DUP update, LEN: {len(dups)}")
             app.library.changed(dups)
-            print_d("______________________ LEFT DUP update")
 
         return False
 
@@ -96,7 +94,7 @@ class AsyncUpdAdded(AsyncUpdater[FPContext]):
 
     @override
     def _processor(self, ctx: FPContext, song: SongWrapper) -> bool | Error:
-        filename = song[attrs.FILENAME]
+        filename = song(attrs.FILENAME)
         if attrs.FINGERPRINT in song:
             fp = str(song(attrs.FINGERPRINT))
             # This is weird -> because I assume that the FP does not exist at the moment

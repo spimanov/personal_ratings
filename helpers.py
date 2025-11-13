@@ -19,15 +19,18 @@ from .async_updater import Context
 from .errors import Error, ErrorCode
 from .trace import print_d
 
-type SongStats = tuple[int, int, int, int, int, str]
+type SongStats = tuple[int, int, int, int, int, int, str]
 
 # Indices of values within the SongStats tuple
-IDX_LAST_PLAYED_STAMP = 0
-IDX_LAST_STARTED_STAMP = 1
-IDX_PLAY_COUNT = 2
-IDX_RATING = 3
-IDX_SKIP_COUNT = 4
-IDX_PLAYLISTS = 5
+IDX_DATE_ADDED_STAMP = 0
+IDX_LAST_PLAYED_STAMP = 1
+IDX_LAST_STARTED_STAMP = 2
+IDX_PLAY_COUNT = 3
+IDX_RATING = 4
+IDX_SKIP_COUNT = 5
+IDX_PLAYLISTS = 6
+
+SONG_STATS_LEN = 7
 
 
 class FPContext(Context):
@@ -93,9 +96,13 @@ def get_or_calc_fp(ctx: FPContext, song: SongWrapper) -> str | Error:
 
 
 def get_song_stats(song: SongWrapper) -> SongStats:
-    lp, ls, pc, rt, sc = 0, 0, 0, 0, 0
+    # Set the `added` timestamp to a date well in advance of the current time.
+    # 3000000000 = Jan 24 2065 05:20:00 GMT+0000
+    ad, lp, ls, pc, rt, sc = 3000000000, 0, 0, 0, 0, 0
     pl = ""
 
+    if attrs.DATE_ADDED_STAMP in song:
+        ad = song(attrs.DATE_ADDED_STAMP)
     if attrs.LAST_PLAYED_STAMP in song:
         lp = song(attrs.LAST_PLAYED_STAMP)
     if attrs.LAST_STARTED_STAMP in song:
@@ -109,18 +116,18 @@ def get_song_stats(song: SongWrapper) -> SongStats:
     if attrs.PLAYLISTS in song:
         pl = song(attrs.PLAYLISTS)
 
-    return (lp, ls, pc, rt, sc, pl)
+    return (ad, lp, ls, pc, rt, sc, pl)
 
 
 def to_stats(vals: Sequence) -> SongStats:
-    # len(SongStats) = 6
-    assert len(vals) == 6
+    assert len(vals) == SONG_STATS_LEN
     return (*vals,)
 
 
-def is_equal(l: SongStats, r: Collection) -> bool:
-    assert len(l) == len(r)
-    return all(l_elem == r_elem for l_elem, r_elem in zip(l, r, strict=True))
+def is_equal(left: SongStats, right: Collection) -> bool:
+    assert len(left) == SONG_STATS_LEN
+    assert len(left) == len(right)
+    return all(l_elem == r_elem for l_elem, r_elem in zip(left, right, strict=True))
 
 
 def is_updatable(song: SongWrapper) -> bool:
@@ -132,7 +139,8 @@ def is_exportable(song: SongWrapper) -> bool:
         is_finite(song)
         and is_a_file(song)
         and (
-            attrs.LAST_PLAYED_STAMP in song
+            attrs.DATE_ADDED_STAMP in song
+            or attrs.LAST_PLAYED_STAMP in song
             or attrs.LAST_STARTED_STAMP in song
             or attrs.PLAY_COUNT in song
             or attrs.RATING in song
@@ -151,7 +159,6 @@ class Record:
         updated_ts: int,
         basename: str,
         dirname: str,
-        added_ts: int,
         stats: SongStats,
     ):
         self.song_id = song_id
@@ -163,9 +170,8 @@ class Record:
             self.updated_ts = updated_ts
         self.basename = basename
         self.dirname = dirname
-        self.added_ts = added_ts
         self.stats = stats
-        # self.lp, self.ls, self.pc, self.rt, self.sc, self.pl = stats
+        # self.ad, self.lp, self.ls, self.pc, self.rt, self.sc, self.pl = stats
 
     def __eq__(self, other):
         if not isinstance(other, Record):
@@ -179,14 +185,15 @@ class Record:
 
     def __iter__(self):
         # Yield the values you want to be unpacked
-        lp, ls, pc, rt, sc, pl = self.stats
+        ad, lp, ls, pc, rt, sc, pl = self.stats
 
-        yield lp # LAST_PLAYED_STAMP
-        yield ls # LAST_STARTED_STAMP
-        yield pc # PLAY_COUNT
-        yield rt # RATING
-        yield sc # SKIP_COUNT
-        yield pl # PLAYLISTS
+        yield ad  # DATE_ADDED_STAMP
+        yield lp  # LAST_PLAYED_STAMP
+        yield ls  # LAST_STARTED_STAMP
+        yield pc  # PLAY_COUNT
+        yield rt  # RATING
+        yield sc  # SKIP_COUNT
+        yield pl  # PLAYLISTS
 
     def is_younger(self, other: "Record") -> bool:
         assert isinstance(other, Record)
@@ -212,7 +219,8 @@ class Record:
             return True
         if self.updated_ts < other.updated_ts:
             return False
-        if self.created_ts > other.created_ts:
+        # The DateAdded timestamp, technically, is not younger but older
+        if self.stats[IDX_DATE_ADDED_STAMP] < other.stats[IDX_DATE_ADDED_STAMP]:
             return True
 
         return False
@@ -229,13 +237,59 @@ def update_song_stats(
     else:
         stats = new_stats
 
-    existing_stats = get_song_stats(song)
-    if not is_equal(existing_stats, stats):
+    ss = get_song_stats(song)
+    result = False
+
+    if ss[IDX_DATE_ADDED_STAMP] > stats[IDX_DATE_ADDED_STAMP]:
+        song[attrs.DATE_ADDED_STAMP] = stats[IDX_DATE_ADDED_STAMP]
+        result = True
+
+    if ss[IDX_LAST_PLAYED_STAMP] < stats[IDX_LAST_PLAYED_STAMP]:
         song[attrs.LAST_PLAYED_STAMP] = stats[IDX_LAST_PLAYED_STAMP]
+        result = True
+
+    if ss[IDX_LAST_STARTED_STAMP] < stats[IDX_LAST_STARTED_STAMP]:
         song[attrs.LAST_STARTED_STAMP] = stats[IDX_LAST_STARTED_STAMP]
+        result = True
+
+    if ss[IDX_PLAY_COUNT] < stats[IDX_PLAY_COUNT]:
         song[attrs.PLAY_COUNT] = stats[IDX_PLAY_COUNT]
+        result = True
+
+    if ss[IDX_RATING] != stats[IDX_RATING]:
         song[attrs.RATING] = stats[IDX_RATING] / attrs.RAITING_SCALE
+        result = True
+
+    if ss[IDX_SKIP_COUNT] < stats[IDX_SKIP_COUNT]:
         song[attrs.SKIP_COUNT] = stats[IDX_SKIP_COUNT]
+        result = True
+
+    if ss[IDX_PLAYLISTS] != stats[IDX_PLAYLISTS]:
         song[attrs.PLAYLISTS] = stats[IDX_PLAYLISTS]
-        return True
-    return False
+        result = True
+
+    return result
+
+
+def force_update_song_stats(
+    song: SongWrapper, new_stats: Sequence | SongStats | Record
+) -> bool:
+    stats: Sequence | SongStats
+
+    if isinstance(new_stats, Record):
+        stats = new_stats.stats
+    else:
+        stats = new_stats
+
+    ss = get_song_stats(song)
+    if is_equal(ss, stats):
+        return False
+
+    song[attrs.DATE_ADDED_STAMP] = stats[IDX_DATE_ADDED_STAMP]
+    song[attrs.LAST_PLAYED_STAMP] = stats[IDX_LAST_PLAYED_STAMP]
+    song[attrs.LAST_STARTED_STAMP] = stats[IDX_LAST_STARTED_STAMP]
+    song[attrs.PLAY_COUNT] = stats[IDX_PLAY_COUNT]
+    song[attrs.RATING] = stats[IDX_RATING] / attrs.RAITING_SCALE
+    song[attrs.SKIP_COUNT] = stats[IDX_SKIP_COUNT]
+    song[attrs.PLAYLISTS] = stats[IDX_PLAYLISTS]
+    return True

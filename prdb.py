@@ -14,7 +14,14 @@ from quodlibet.util.songwrapper import SongWrapper
 
 from . import attrs
 from .trace import print_d
-from .helpers import get_song_stats, is_equal, update_song_stats, to_stats, Record
+from .helpers import (
+    get_song_stats,
+    is_equal,
+    force_update_song_stats,
+    update_song_stats,
+    to_stats,
+    Record,
+)
 
 
 def create_db(db_path: str):
@@ -36,7 +43,7 @@ def update_song_in_db(
 ) -> bool:
 
     sql_find = (
-        "SELECT song_id, lastplayed, laststarted, "
+        "SELECT song_id, added, lastplayed, laststarted, "
         "playcount, rating, skipcount, playlists "
         "FROM songs WHERE fingerprint = ?;"
     )
@@ -50,7 +57,7 @@ def update_song_in_db(
 
     sql_update = (
         "UPDATE songs SET "
-        "lastplayed = ?, laststarted = ?, "
+        "added = ?, lastplayed = ?, laststarted = ?, "
         "playcount = ?, rating = ?, skipcount = ?, playlists = ?, "
         "updated_at = unixepoch() WHERE song_id = ?;"
     )
@@ -82,12 +89,11 @@ def update_song_in_db(
                     fingerprint,
                     song(attrs.BASENAME),
                     song(attrs.DIRNAME),
-                    song(attrs.DATE_ADDED_STAMP),
                     *song_stats,
                 )
                 cursor.execute(sql_insert, ins_data)
 
-    print_d(f"Updated DB record for file: {song_stats[0]}, {fingerprint}")
+    print_d(f"Updated DB record for song: '{song(attrs.BASENAME)}', {fingerprint}")
     return True
 
 
@@ -96,7 +102,7 @@ def update_song_from_db(
 ) -> bool:
 
     sql_find = (
-        "SELECT song_id, lastplayed, laststarted, "
+        "SELECT song_id, added, lastplayed, laststarted, "
         "playcount, rating, skipcount, playlists "
         "FROM songs WHERE fingerprint = ?;"
     )
@@ -110,24 +116,19 @@ def update_song_from_db(
                 song_id, *vals = record
 
                 if not force:
-                    lp = 0  # last played timestamp
-                    ls = 0  # last started timestamp
-
-                    if attrs.LAST_PLAYED_STAMP in song:
-                        lp = song(attrs.LAST_PLAYED_STAMP)
-
-                    if attrs.LAST_STARTED_STAMP in song:
-                        ls = song(attrs.LAST_STARTED_STAMP)
-
-                    if (lp >= vals[0]) or (ls >= vals[1]):
-                        # Update is not needed
-                        return False
-
-                if update_song_stats(song, vals):
-                    print_d(
-                        f"Updated song from DB: {song(attrs.BASENAME)}, {fingerprint}"
-                    )
-                    return True
+                    if update_song_stats(song, vals):
+                        print_d(
+                            f"Updated song from DB: '{song(attrs.BASENAME)}',"
+                            f" {fingerprint}"
+                        )
+                        return True
+                else:
+                    if force_update_song_stats(song, vals):
+                        print_d(
+                            f"Forcibly updated song from DB: '{song(attrs.BASENAME)}',"
+                            f" {fingerprint}"
+                        )
+                        return True
 
     return False
 
@@ -155,7 +156,6 @@ def get_songs(db_path: str) -> list[Record]:
                     updated_at,
                     basename,
                     dirname,
-                    added_ts,
                     *vals,
                 ) = row
 
@@ -168,7 +168,6 @@ def get_songs(db_path: str) -> list[Record]:
                         updated_at,
                         basename,
                         dirname,
-                        added_ts,
                         stats,
                     )
                 )
@@ -179,7 +178,7 @@ def get_songs(db_path: str) -> list[Record]:
 def update_rec(db_path: str, rec: Record) -> bool:
 
     sql_find = (
-        "SELECT song_id, lastplayed, laststarted, "
+        "SELECT song_id, added, lastplayed, laststarted, "
         "playcount, rating, skipcount, playlists "
         "FROM songs WHERE fingerprint = ?;"
     )
@@ -193,7 +192,7 @@ def update_rec(db_path: str, rec: Record) -> bool:
 
     sql_update = (
         "UPDATE songs SET "
-        "lastplayed = ?, laststarted = ?, "
+        "added = ?, lastplayed = ?, laststarted = ?, "
         "playcount = ?, rating = ?, skipcount = ?, playlists = ?, "
         "updated_at = unixepoch() WHERE song_id = ?;"
     )
@@ -218,7 +217,6 @@ def update_rec(db_path: str, rec: Record) -> bool:
                     rec.fp,
                     rec.basename,
                     rec.dirname,
-                    rec.added_ts,
                     *song_stats,
                 )
                 cursor.execute(sql_insert, ins_data)

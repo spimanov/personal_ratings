@@ -195,6 +195,7 @@ class AsyncUpdater(ABC, Generic[T]):
                 err = Error(ErrorCode.DB_ERROR, str(e))
                 result.failed.append(FailedSong(s, err))
             except Exception as e:
+                print_e(f"Unhandled exception: {str(e)}")
                 err = Error(ErrorCode.ERROR, str(e))
                 result.failed.append(FailedSong(s, err))
 
