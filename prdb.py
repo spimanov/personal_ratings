@@ -84,6 +84,9 @@ def update_song_in_db(
 
                 # Updating data in the db
                 cursor.execute(sql_update, song_stats + (song_id,))
+                print_d(
+                    f"Updated DB record for song: '{song(attrs.BASENAME)}', {fingerprint}"
+                )
             else:
                 ins_data = (
                     fingerprint,
@@ -92,8 +95,11 @@ def update_song_in_db(
                     *song_stats,
                 )
                 cursor.execute(sql_insert, ins_data)
+                print_d(
+                    f"Inserted DB record for song: '{song(attrs.BASENAME)}',"
+                    f" {fingerprint}"
+                )
 
-    print_d(f"Updated DB record for song: '{song(attrs.BASENAME)}', {fingerprint}")
     return True
 
 
@@ -185,16 +191,18 @@ def update_rec(db_path: str, rec: Record) -> bool:
 
     sql_insert = (
         "INSERT INTO songs "
-        "(fingerprint, basename, dirname, added, lastplayed, laststarted, "
-        "playcount, rating, skipcount, playlists) VALUES "
-        "(?, ?, ?, ?, ?, ?, ?, ?, ?, ?);"
+        "(fingerprint, basename, dirname, added, "
+        "lastplayed, laststarted, playcount, rating, skipcount, playlists, "
+        "created_at, updated_at) VALUES "
+        "(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);"
     )
 
     sql_update = (
         "UPDATE songs SET "
         "added = ?, lastplayed = ?, laststarted = ?, "
         "playcount = ?, rating = ?, skipcount = ?, playlists = ?, "
-        "updated_at = unixepoch() WHERE song_id = ?;"
+        "created_at = ?, updated_at = ? "
+        "WHERE song_id = ?;"
     )
 
     with closing(sqlite3.connect(db_path)) as conn:
@@ -211,14 +219,26 @@ def update_rec(db_path: str, rec: Record) -> bool:
                     return False
 
                 # Updating data in the db
-                cursor.execute(sql_update, song_stats + (song_id,))
+                cursor.execute(
+                    sql_update,
+                    (
+                        *song_stats,
+                        rec.created_ts,
+                        rec.updated_ts,
+                        song_id,
+                    ),
+                )
+                print_d(f"Updated DB record for file: {rec.basename}, {rec.fp}")
             else:
                 ins_data = (
                     rec.fp,
                     rec.basename,
                     rec.dirname,
                     *song_stats,
+                    rec.created_ts,
+                    rec.updated_ts,
                 )
                 cursor.execute(sql_insert, ins_data)
+                print_d(f"Inserted DB record for file: {rec.basename}, {rec.fp}")
 
     return True

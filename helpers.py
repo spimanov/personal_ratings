@@ -164,10 +164,7 @@ class Record:
         self.song_id = song_id
         self.fp = fp
         self.created_ts = created_ts
-        if updated_ts is None:
-            self.updated_ts = 0
-        else:
-            self.updated_ts = updated_ts
+        self.updated_ts = updated_ts
         self.basename = basename
         self.dirname = dirname
         self.stats = stats
@@ -215,10 +212,13 @@ class Record:
             return True
         if self.stats[IDX_PLAY_COUNT] < other.stats[IDX_PLAY_COUNT]:
             return False
-        if self.updated_ts > other.updated_ts:
-            return True
-        if self.updated_ts < other.updated_ts:
-            return False
+
+        if (self.updated_ts is not None) and (other.updated_ts is not None):
+            if self.updated_ts > other.updated_ts:
+                return True
+            if self.updated_ts < other.updated_ts:
+                return False
+
         # The DateAdded timestamp, technically, is not younger but older
         if self.stats[IDX_DATE_ADDED_STAMP] < other.stats[IDX_DATE_ADDED_STAMP]:
             return True
