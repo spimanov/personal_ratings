@@ -6,239 +6,197 @@
 # (at your option) any later version.
 
 import sqlite3
+import time
 
 from pathlib import Path
 from contextlib import closing
 
-from quodlibet.util.songwrapper import SongWrapper
-
-from . import attrs
 from .trace import print_d
-from .helpers import (
-    get_song_stats,
-    is_equal,
-    force_update_song_stats,
-    update_song_stats,
-    to_stats,
-    Record,
-)
+from .fingerprint import Fingerprint
+
+
+class DBRecord:
+    fp_id: int
+    basename: str
+    rating: int
+    fp: Fingerprint
+    created_at: int
+    updated_at: int | None
+
+    def __init__(
+        self,
+        fp_id: int,
+        basename: str,
+        rating: int,
+        fp_hash: int | None,
+        fp: Fingerprint | bytes,
+        created_at: int,
+        updated_at: int | None,
+    ) -> None:
+        self.fp_id = fp_id
+        self.basename = basename
+        self.rating = rating
+        self.created_at = created_at
+        self.updated_at = updated_at
+
+        if isinstance(fp, bytes):
+            self.fp = Fingerprint(fp, fp_hash)
+        elif isinstance(fp, Fingerprint):
+            self.fp = fp
+        else:
+            raise sqlite3.DatabaseError("create DBRecord: invalid FP data type")
 
 
 def create_db(db_path: str):
     script_directory = Path(__file__).resolve().parent
     prdb_sql = script_directory / "prdb.sql"
     with open(prdb_sql) as f:
-        sql = f.read()
+        create_db_query = f.read()
 
     with closing(sqlite3.connect(db_path)) as conn:
         with conn:
             cursor = conn.cursor()
-            cursor.executescript(sql)
+            cursor.executescript(create_db_query)
 
-    print_d(f"PRDB has created at {db_path}")
+    print_d(f"New PRDB has been created on: '{db_path}'")
 
 
-def update_song_in_db(
-    db_path: str, fingerprint: str, song: SongWrapper, force=True
-) -> bool:
+def add_song(db_path: str, basename: str, rating: int, fp: Fingerprint) -> DBRecord:
 
-    sql_find = (
-        "SELECT song_id, added, lastplayed, laststarted, "
-        "playcount, rating, skipcount, playlists "
-        "FROM songs WHERE fingerprint = ?;"
+    insert_query = (
+        "INSERT INTO songs (basename, rating, fp_hash, fingerprint, created_at) "
+        "VALUES (?, ?, ?, ?, ?) RETURNING id;"
     )
 
-    sql_insert = (
-        "INSERT INTO songs "
-        "(fingerprint, basename, dirname, added, lastplayed, laststarted, "
-        "playcount, rating, skipcount, playlists) VALUES "
-        "(?, ?, ?, ?, ?, ?, ?, ?, ?, ?);"
-    )
+    with closing(sqlite3.connect(db_path)) as conn:
+        with conn:
+            cursor = conn.cursor()
 
-    sql_update = (
+            # Get the current Unix epoch timestamp as an integer
+            # time.time() returns a float, so we cast it to an int for second precision
+            created_at = int(time.time())
+
+            cursor.execute(
+                insert_query, (basename, rating, fp.hash(), fp.as_blob(), created_at)
+            )
+            row = cursor.fetchone()
+            if not row:
+                raise sqlite3.DatabaseError("add_song: insert_query returned None")
+
+            (song_id,) = row
+            print_d(f"Added new song into DB: #{song_id}: '{basename}'")
+
+            return DBRecord(
+                song_id,
+                basename,
+                rating,
+                None,
+                fp,
+                created_at,
+                None,
+            )
+
+
+def force_song_update(db_path: str, song: DBRecord) -> None:
+    """Force record update (all columns, including created_at and updated_at)"""
+
+    update_query = (
         "UPDATE songs SET "
-        "added = ?, lastplayed = ?, laststarted = ?, "
-        "playcount = ?, rating = ?, skipcount = ?, playlists = ?, "
-        "updated_at = unixepoch() WHERE song_id = ?;"
+        "basename = ?, rating = ?, created_at = ?, updated_at = ? "
+        "WHERE id = ?;"
     )
 
     with closing(sqlite3.connect(db_path)) as conn:
         with conn:
             cursor = conn.cursor()
-            cursor.execute(sql_find, (fingerprint,))
-            record = cursor.fetchone()
-            song_stats = get_song_stats(song)
-            if record:
-                song_id, *vals = record
-
-                if force:
-                    if is_equal(song_stats, vals):
-                        # Update is not needed
-                        return False
-                else:
-                    if (song_stats[0] <= vals[0]) and (song_stats[1] <= vals[1]):
-                        return False
-
-                print_d(f"in DB: {vals}")
-                print_d(f"in QL: {song_stats}")
-
-                # Updating data in the db
-                cursor.execute(sql_update, song_stats + (song_id,))
-                print_d(
-                    f"Updated DB record for song: '{song(attrs.BASENAME)}', {fingerprint}"
-                )
-            else:
-                ins_data = (
-                    fingerprint,
-                    song(attrs.BASENAME),
-                    song(attrs.DIRNAME),
-                    *song_stats,
-                )
-                cursor.execute(sql_insert, ins_data)
-                print_d(
-                    f"Inserted DB record for song: '{song(attrs.BASENAME)}',"
-                    f" {fingerprint}"
-                )
-
-    return True
+            cursor.execute(
+                update_query,
+                (
+                    song.basename,
+                    song.rating,
+                    song.created_at,
+                    song.updated_at,
+                    song.fp_id,
+                ),
+            )
+            print_d(f"Forcibly Updated song in DB: #{song.fp_id}")
 
 
-def update_song_from_db(
-    db_path: str, fingerprint: str, song: SongWrapper, force=True
+def update_song_if_different(
+    db_path: str, song_id: int, basename: str, rating: int
 ) -> bool:
+    """Update a record in DB only if it is different"""
 
-    sql_find = (
-        "SELECT song_id, added, lastplayed, laststarted, "
-        "playcount, rating, skipcount, playlists "
-        "FROM songs WHERE fingerprint = ?;"
+    update_query = (
+        "UPDATE songs SET "
+        "basename = ?, rating = ?, "
+        "updated_at = unixepoch() WHERE "
+        "id = ? AND ((basename != ?) OR (rating != ?));"
     )
 
     with closing(sqlite3.connect(db_path)) as conn:
         with conn:
             cursor = conn.cursor()
-            cursor.execute(sql_find, (fingerprint,))
-            record = cursor.fetchone()
-            if record:
-                song_id, *vals = record
+            cursor.execute(
+                update_query,
+                (basename, rating, song_id, basename, rating),
+            )
+            conn.commit()
 
-                if not force:
-                    if update_song_stats(song, vals):
-                        print_d(
-                            f"Updated song from DB: '{song(attrs.BASENAME)}',"
-                            f" {fingerprint}"
-                        )
-                        return True
-                else:
-                    if force_update_song_stats(song, vals):
-                        print_d(
-                            f"Forcibly updated song from DB: '{song(attrs.BASENAME)}',"
-                            f" {fingerprint}"
-                        )
-                        return True
+            if cursor.rowcount > 0:
+                print_d(
+                    f"Updated song in DB: #{song_id}, rating: {rating}, basename:"
+                    f" '{basename}'"
+                )
+                return True
 
     return False
 
 
-def get_songs(db_path: str) -> list[Record]:
+def get_songs(db_path: str) -> list[DBRecord]:
 
-    sql_select_all = (
-        "SELECT song_id, fingerprint, created_at, updated_at, basename, dirname, added, "
-        "lastplayed, laststarted, playcount, rating, skipcount, playlists "
+    select_all_query = (
+        "SELECT id, basename, rating, fp_hash, fingerprint, created_at, updated_at "
         "FROM songs;"
     )
 
-    result: list[Record] = []
+    result: list[DBRecord] = []
     with closing(sqlite3.connect(db_path)) as conn:
         with conn:
             cursor = conn.cursor()
-            cursor.execute(sql_select_all)
-            # Fetch all the results
+            cursor.execute(select_all_query)
+
+            # Fetch all results
             rows = cursor.fetchall()
             for row in rows:
-                (
-                    song_id,
-                    fp,
-                    created_at,
-                    updated_at,
-                    basename,
-                    dirname,
-                    *vals,
-                ) = row
-
-                stats = to_stats(vals)
-                result.append(
-                    Record(
-                        song_id,
-                        fp,
-                        created_at,
-                        updated_at,
-                        basename,
-                        dirname,
-                        stats,
-                    )
-                )
+                result.append(DBRecord(*row))
 
     return result
 
 
-def update_rec(db_path: str, rec: Record) -> bool:
+def get_songs_by_hash(
+    db_path: str, ext_path: str, hash: int, distance: int
+) -> list[DBRecord]:
+    """sqlite3_phhammdist_init"""
+    ext_load_query = f"SELECT load_extension('{ext_path}', 'sqlite3_phhammdist_init');"
 
-    sql_find = (
-        "SELECT song_id, added, lastplayed, laststarted, "
-        "playcount, rating, skipcount, playlists "
-        "FROM songs WHERE fingerprint = ?;"
+    select_query = (
+        "SELECT id, basename, rating, fp_hash, fingerprint, created_at, updated_at "
+        "FROM songs WHERE phhammdist(fp_hash, ?) <= ?;"
     )
 
-    sql_insert = (
-        "INSERT INTO songs "
-        "(fingerprint, basename, dirname, added, "
-        "lastplayed, laststarted, playcount, rating, skipcount, playlists, "
-        "created_at, updated_at) VALUES "
-        "(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);"
-    )
-
-    sql_update = (
-        "UPDATE songs SET "
-        "added = ?, lastplayed = ?, laststarted = ?, "
-        "playcount = ?, rating = ?, skipcount = ?, playlists = ?, "
-        "created_at = ?, updated_at = ? "
-        "WHERE song_id = ?;"
-    )
-
+    result: list[DBRecord] = []
     with closing(sqlite3.connect(db_path)) as conn:
         with conn:
+            conn.enable_load_extension(True)
+            conn.execute(ext_load_query)
+
             cursor = conn.cursor()
-            cursor.execute(sql_find, (rec.fp,))
-            record = cursor.fetchone()
-            song_stats = rec.stats
-            if record:
-                song_id, *vals = record
+            cursor.execute(select_query, (hash, distance))
 
-                if is_equal(song_stats, vals):
-                    # Update is not needed
-                    return False
+            # Fetch all results
+            rows = cursor.fetchall()
+            for row in rows:
+                result.append(DBRecord(*row))
 
-                # Updating data in the db
-                cursor.execute(
-                    sql_update,
-                    (
-                        *song_stats,
-                        rec.created_ts,
-                        rec.updated_ts,
-                        song_id,
-                    ),
-                )
-                print_d(f"Updated DB record for file: {rec.basename}, {rec.fp}")
-            else:
-                ins_data = (
-                    rec.fp,
-                    rec.basename,
-                    rec.dirname,
-                    *song_stats,
-                    rec.created_ts,
-                    rec.updated_ts,
-                )
-                cursor.execute(sql_insert, ins_data)
-                print_d(f"Inserted DB record for file: {rec.basename}, {rec.fp}")
-
-    return True
+    return result

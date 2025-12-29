@@ -5,9 +5,9 @@
 # the Free Software Foundation; either version 2 of the License, or
 # (at your option) any later version.
 
-from quodlibet import const
+from quodlibet.const import DEBUG as ql_DEBUG
 
-DEBUG = True and const.DEBUG
+DEBUG = True and ql_DEBUG
 
 if DEBUG:
     from ._trace_impl import print_e, print_w, print_d, print_thread_id

@@ -5,12 +5,14 @@
 # the Free Software Foundation; either version 2 of the License, or
 # (at your option) any later version.
 
-from typing import override
 
 import gi
 
 gi.require_version("Gtk", "3.0")
+
 from gi.repository import Gtk
+
+from typing import override
 
 from quodlibet import _
 from quodlibet.plugins.events import EventPlugin
@@ -47,12 +49,14 @@ class PersonalRatingsPlugin(EventPlugin):
         self._impl = None
 
     @override
-    def plugin_on_added(self, songs) -> None:
+    def plugin_on_added(self, songs: list[SongWrapper]) -> None:
+        # quodlibet/plugins/events.py:131
         assert self._impl is not None
         self._impl.on_added(songs)
 
     @override
     def plugin_on_changed(self, songs: list[SongWrapper]) -> None:
+        # quodlibet/plugins/events.py:131
         assert self._impl is not None
         self._impl.on_changed(songs)
 

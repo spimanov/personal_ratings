@@ -12,8 +12,9 @@ import threading
 import time
 
 from senf import print_
+from typing import Any
 
-from quodlibet.util import logging as ql_logging
+from quodlibet.util.logging import log as ql_log
 from quodlibet.util.dprint import (
     START_TIME,
     Colorise,
@@ -30,17 +31,17 @@ def print_thread_id() -> None:
     print_d(f"Thread: {thread_name}, id: {thread_id}", None, 4)
 
 
-def print_d(string, custom_context=None, context_level=3):
+def print_d(string: str, custom_context: str | None = None, context_level: int = 3):
     """Print debugging information."""
     _print_message(string, custom_context, "D", "green", "debug", context_level)
 
 
-def print_w(string, context=None, context_level=3):
+def print_w(string: str, context: str | None = None, context_level: int = 3):
     """Print warnings"""
     _print_message(string, context, "W", "yellow", "warnings", context_level)
 
 
-def print_e(string, context=None, context_level=3):
+def print_e(string: str, context: str | None = None, context_level: int = 3):
     """Print errors"""
     _print_message(string, context, "E", "red", "errors", context_level)
 
@@ -56,13 +57,13 @@ def _get_context(level: int = 0) -> str:
 
 
 def _print_message(
-    string,
-    custom_context,
-    prefix,
-    color,
-    logging_category,
-    context_level,
-    start_time=START_TIME,
+    string: str | Any,
+    custom_context: str | None,
+    prefix: str,
+    color: str,
+    logging_category: str,
+    context_level: int,
+    start_time: float = START_TIME,
 ):
     if not isinstance(string, str):
         string = str(string)
@@ -79,7 +80,7 @@ def _print_message(
 
     lines = string.splitlines()
     if len(lines) > 1:
-        string = os.linesep.join([info] + [" " * 4 + l for l in lines])
+        string = os.linesep.join([info] + [" " * 4 + line for line in lines])
     else:
         string = info + " " + lines[0]
 
@@ -99,4 +100,4 @@ def _print_message(
             else:
                 raise
 
-    ql_logging.log(strip_color(string), logging_category)
+    ql_log(strip_color(string), logging_category)

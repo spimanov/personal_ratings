@@ -93,7 +93,7 @@ class Dlg(DlgBase):
         count_failed = len(progress.failed)
         if count_failed:
             for s in progress.failed:
-                msg = f"{s.song}: {s.error}, "
+                msg = f"{s}: Error: {s.error}, "
                 self._log(msg)
 
     @override

@@ -25,7 +25,7 @@ class FailedSong:
         self.error = error
 
     def __str__(self) -> str:
-        return self.song[attrs.BASENAME]
+        return self.song(attrs.BASENAME)
 
 
 type Songs = Collection[SongWrapper]

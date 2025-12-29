@@ -27,7 +27,7 @@ from quodlibet.util.thread import call_async
 from .async_helpers import Context, TaskProgress, TaskResult, FailedSong
 from .config import Config
 from .errors import Error, ErrorCode
-from .trace import print_d
+from .trace import print_e, print_d
 
 type Songs = deque[SongWrapper]
 
@@ -74,7 +74,8 @@ class DlgBase(ABC, Generic[T]):
         self._close_btn = cast(Gtk.Button, builder.get_object("close_btn"))
 
         self._stop_btn.set_sensitive(False)
-        self._progress.set_fraction(1.0)
+        self._progress.set_fraction(0.0)
+        self._progress.set_text("")
 
     def run(self):
         self._dlg.run()
@@ -131,6 +132,8 @@ class DlgBase(ABC, Generic[T]):
         buffer = self._log_tv.get_buffer()
         buffer.set_text("", -1)
 
+        # Revert to automatic percentage display for other values
+        self._progress.set_text(None)
         self._progress.set_fraction(0.0)
 
         self._start_btn.set_sensitive(False)
@@ -185,6 +188,12 @@ class DlgBase(ABC, Generic[T]):
             v = progress.total_processed / self._count_songs_to_process
         else:
             v = 0.0
+
+        if 0.99 < v < 1.0:
+            self._progress.set_text("99%")
+        elif v >= 1.0:
+            self._progress.set_text("100%")
+
         self._progress.set_fraction(v)
 
         self._update_task_progress_impl(progress)
@@ -199,7 +208,7 @@ class DlgBase(ABC, Generic[T]):
         count_failed = len(progress.failed)
         if count_failed:
             for s in progress.failed:
-                msg = f"{s.song}: {s.error}, "
+                msg = f"{s}: Error: {s.error}, "
                 self._log(msg)
 
     @final
@@ -261,33 +270,6 @@ class DlgBase(ABC, Generic[T]):
             try:
                 res = self._processor(ctx, s)
 
-                if isinstance(res, Error):
-                    progress.failed.append(FailedSong(s, res))
-                else:
-                    assert isinstance(res, bool)
-                    if res:
-                        progress.succeeded.append(s)
-                    else:
-                        progress.skipped += 1
-
-                count_batch += 1
-
-                if cancellable.is_cancelled():
-                    result.error = Error(ErrorCode.CANCELLED)
-                    progress.error = Error(ErrorCode.CANCELLED)
-                    for s in songs:
-                        progress.failed.append(FailedSong(s, Error(ErrorCode.CANCELLED)))
-                        count_batch += 1
-                    break
-
-                if count_batch > self._batch_size:
-                    count_batch = 0
-                    result.add(progress)
-                    progress.total_processed = result.total_processed
-
-                    self._async_update_progress(progress)
-                    progress = TaskProgress()
-
             except sqlite3.Error as e:
                 if (
                     e.sqlite_errorcode == sqlite3.SQLITE_LOCKED
@@ -301,11 +283,42 @@ class DlgBase(ABC, Generic[T]):
                     time.sleep(1)
                     continue
 
-                err = Error(ErrorCode.DB_ERROR, str(e))
-                progress.failed.append(FailedSong(s, err))
+                res = Error(ErrorCode.DB_ERROR, str(e))
+                # send notification about the error  immediately
+                count_batch = self._batch_size
+
             except Exception as e:
-                err = Error(ErrorCode.ERROR, str(e))
-                progress.failed.append(FailedSong(s, err))
+                print_e(f"Exc: {str(e)}")
+                res = Error(ErrorCode.ERROR, str(e))
+                # send notification about the error  immediately
+                count_batch = self._batch_size
+
+            if isinstance(res, Error):
+                progress.failed.append(FailedSong(s, res))
+            else:
+                assert isinstance(res, bool)
+                if res:
+                    progress.succeeded.append(s)
+                else:
+                    progress.skipped += 1
+
+            count_batch += 1
+
+            if cancellable.is_cancelled():
+                result.error = Error(ErrorCode.CANCELLED)
+                progress.error = Error(ErrorCode.CANCELLED)
+                for s in songs:
+                    progress.failed.append(FailedSong(s, Error(ErrorCode.CANCELLED)))
+                    count_batch += 1
+                break
+
+            if count_batch >= self._batch_size:
+                count_batch = 0
+                result.add(progress)
+                progress.total_processed = result.total_processed
+
+                self._async_update_progress(progress)
+                progress = TaskProgress()
 
         if count_batch != 0:
             result.add(progress)
@@ -314,6 +327,7 @@ class DlgBase(ABC, Generic[T]):
             count_batch = 0
 
         self._delete_context(ctx)
+
         # call_async does not call callback in case if cancelled is set
         # Force call it.
         if cancellable.is_cancelled():

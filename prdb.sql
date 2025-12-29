@@ -8,19 +8,13 @@ BEGIN TRANSACTION;
 
 -- Table: songs
 CREATE TABLE IF NOT EXISTS songs (
-    song_id     INTEGER   PRIMARY KEY ASC AUTOINCREMENT
-                          UNIQUE,
-    fingerprint TEXT (40) NOT NULL
+    id     INTEGER   PRIMARY KEY ASC AUTOINCREMENT
                           UNIQUE,
     basename    TEXT,
-    dirname     TEXT,
-    added       INTEGER,
-    lastplayed  INTEGER,
-    laststarted INTEGER,
-    playcount   INTEGER,
     rating      INTEGER,
-    skipcount   INTEGER,
-    playlists   TEXT,
+    fp_hash     INTEGER,
+    fingerprint BLOB NOT NULL
+                UNIQUE,
     created_at  INTEGER DEFAULT (unixepoch() )
                         NOT NULL,
     updated_at  INTEGER

@@ -40,6 +40,9 @@ class Config:
     last_ext_operation_uuid: ConfProp
     """ UUID of the latest operation, performed on the external DB. """
 
+    sqlite_ext_lib: str
+    """ Full path to the sqlite-phhammdist.so """
+
     _cfg: PluginConfig
 
     @classmethod
@@ -56,6 +59,10 @@ class Config:
         cls.ext_db_path = ConfProp(cfg, "ext_db_path", "~/cloud/personal-ext.db")
         cls.last_db_operation_uuid = ConfProp(cfg, "last_db_operation_uuid", "")
         cls.last_ext_operation_uuid = ConfProp(cfg, "last_ext_operation_uuid", "")
+
+        cls.sqlite_ext_lib = str(
+            Path(__file__).resolve().parent / "sqlite-phhammdist" / "sqlite-phhammdist.so"
+        )
 
     @classmethod
     def ConfigCheckButton(cls, label, name, default=False):

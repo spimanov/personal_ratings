@@ -6,18 +6,16 @@
 # (at your option) any later version.
 
 # Song attributes
-FINGERPRINT = "~fingerprint"
+FP_ID = "~#fp_id"
+
 BASENAME = "~basename"
-DIRNAME = "~dirname"
-DATE_ADDED_STAMP = "~#added"
-LAST_PLAYED_STAMP = "~#lastplayed"
-LAST_STARTED_STAMP = "~#laststarted"
-PLAY_COUNT = "~#playcount"
+""" Software tag, can be obtained by using __call__, but not the __getitem__"""
+
 RATING = "~#rating"
-SKIP_COUNT = "~#skipcount"
-PLAYLISTS = "~playlists"
+
 FILENAME = "~filename"
-LENGTH = "~#length"
+""" Can be obtained by using th __getitem__"""
 
 
 RAITING_SCALE = 1000
+EPSILON = 0.01

@@ -1,0 +1,27 @@
+[tool.ruff.lint]
+
+[tool.ruff.lint.per-file-ignores]
+"__init__.py" = ["E402"]
+"fp_calculator.py" = ["E402"]
+"dlg_base.py" = ["E402"]
+"dlg_export_to_prdb.py" = ["E402"]
+"dlg_gen_fps.py" = ["E402"]
+"dlg_import_from_prdb.py" = ["E402"]
+"dlg_proc_dups.py" = ["E402"]
+"dlg_sync_with_ext.py" = ["E402"]
+
+[tool.pyright]
+typeCheckingMode = "standard"
+reportMissingTypeStubs = false
+# reportPrivateImportUsage = false
+
+extraPaths = [
+    "/home/pipa/tools/quodlibet/quodlibet",
+]
+
+# stubPath uses ~/typings by default
+# stubPath = "./quodlibet-stubs"
+# extraPaths = [".venv/lib/python3.13/site-packages/gi-stubs"]
+
+venvPath = "/home/pipa/tools/quodlibet"
+venv = ".venv"

@@ -16,22 +16,23 @@ from gi.repository import Gtk
 from quodlibet.library import SongLibrary
 from quodlibet.util.songwrapper import SongWrapper
 
-from . import attrs
+from . import attrs, prdb
 
 from .config import Config
-from .errors import Error
+from .errors import Error, ErrorCode
+from .prdb import DBRecord
 from .helpers import (
     FPContext,
     is_updatable,
-    calc_fp,
 )
+from .trace import print_d
 
 from .dlg_base import DlgBase, Songs, TaskProgress
 
 
 class Dlg(DlgBase):
     def __init__(self, config: Config, parent: Gtk.Window, library: SongLibrary):
-        super().__init__("dlg_process.glade", config, parent, library, 100)
+        super().__init__("dlg_process.glade", config, parent, library, 3)
 
     @override
     def _init_ui(self, parent: Gtk.Window, builder: Gtk.Builder) -> None:
@@ -47,6 +48,14 @@ class Dlg(DlgBase):
     @override
     def _create_context(self) -> FPContext:
         return FPContext(self._cancellable)
+
+    @override
+    def _update_task_progress_impl(self, progress: TaskProgress) -> None:
+        count_failed = len(progress.failed)
+        if count_failed:
+            for s in progress.failed:
+                msg = f"{s}: Error: {s.error}, "
+                self._log(msg)
 
     @override
     def _get_songs_to_process(self, ctx: FPContext) -> Songs:
@@ -65,11 +74,12 @@ class Dlg(DlgBase):
 
         for s in self._library.values():
             if is_updatable(s):
-                if all or (attrs.FINGERPRINT not in s):
+                if all or (attrs.FP_ID not in s):
                     songs.append(SongWrapper(s))
 
+            batch_size = 100
             in_batch += 1
-            if (in_batch >= self._batch_size) or ((in_batch + total) == total_songs):
+            if (in_batch >= batch_size) or ((in_batch + total) == total_songs):
                 total += in_batch
                 in_batch = 0
                 progress = TaskProgress()
@@ -90,8 +100,33 @@ class Dlg(DlgBase):
 
     @override
     def _processor(self, ctx: FPContext, song: SongWrapper) -> bool | Error:
-        fp = calc_fp(ctx, song)
-        if isinstance(fp, Error):
-            return fp
+
+        filename = song[attrs.FILENAME]
+
+        fp = ctx.calc(filename)
+
+        if fp is None:
+            return Error(ErrorCode.FINGERPRINT_ERROR)
+
+        db_records = prdb.get_songs_by_hash(
+            self._config.db_path, self._config.sqlite_ext_lib, fp.hash(), 3
+        )
+
+        db_record: DBRecord | None = None
+        # Is the song already in the PRDB?
+        for r in db_records:
+            if r.fp == fp:
+                db_record = r
+                break
+
+        if db_record is None:
+            basename: str = song(attrs.BASENAME)
+            rating: int = int(song(attrs.RATING) * attrs.RAITING_SCALE)
+            db_record = prdb.add_song(self._config.db_path, basename, rating, fp)
+        else:
+            song[attrs.RATING] = db_record.rating / attrs.RAITING_SCALE
+            print_d(f"duplicate fp_id: {db_record.fp_id} '{db_record.basename}' => '{filename}'")
+
+        song[attrs.FP_ID] = db_record.fp_id
 
         return True
