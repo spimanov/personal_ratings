@@ -5,25 +5,24 @@
 # the Free Software Foundation; either version 2 of the License, or
 # (at your option) any later version.
 
-from typing import cast, override
-from collections import deque
-
 import gi
 
 gi.require_version("Gtk", "3.0")
 from gi.repository import Gtk
 
+from typing import cast, override
+from collections import deque
+
 from quodlibet.library import SongLibrary
 from quodlibet.util.songwrapper import SongWrapper
 
-from . import prdb
+from . import attrs, prdb
 
 from .config import Config
 from .dlg_base import DlgBase, Songs, TaskProgress
-from .errors import Error
+from .errors import Error, ErrorCode
 from .helpers import (
     FPContext,
-    get_or_calc_fp,
     is_updatable,
 )
 
@@ -89,19 +88,26 @@ class Dlg(DlgBase):
         return songs
 
     @override
-    def _update_task_progress_impl(self, progress: TaskProgress) -> None:
-        count_failed = len(progress.failed)
-        if count_failed:
-            for s in progress.failed:
-                msg = f"{s}: Error: {s.error}, "
-                self._log(msg)
-
-    @override
     def _processor(self, ctx: FPContext, song: SongWrapper) -> bool | Error:
-        fp = get_or_calc_fp(ctx, song)
-        if isinstance(fp, Error):
-            return fp
+        # Ensure the fingerprint of the song
+        if attrs.FP_ID not in song:
+            return Error(ErrorCode.FINGERPRINT_ERROR)
 
-        return prdb.update_song_from_db(
-            self._config.db_path, fp, song, self._force_import
-        )
+        fp_id = song[attrs.FP_ID]
+        rating = int(song(attrs.RATING) * attrs.RAITING_SCALE)
+        ts = 0
+        if "~#laststarted" in song:
+            ts = song("~#laststarted")
+
+        rec = prdb.get_song(self._config.db_path, fp_id)
+
+        rec_ts = rec.updated_at if rec.updated_at is not None else rec.created_at
+
+        if self._force_import or (ts < rec_ts):
+            if rating != rec.rating:
+                if rating != rec.rating:
+                    song[attrs.RATING] = rec.rating / attrs.RAITING_SCALE
+                song["~#laststarted"] = rec_ts
+                return True
+
+        return False
