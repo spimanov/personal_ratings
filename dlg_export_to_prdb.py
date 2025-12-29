@@ -5,25 +5,26 @@
 # the Free Software Foundation; either version 2 of the License, or
 # (at your option) any later version.
 
-from typing import cast, override
-from collections import deque
 
+import time
 import gi
 
 gi.require_version("Gtk", "3.0")
 from gi.repository import Gtk
 
+from typing import cast, override
+from collections import deque
+
 from quodlibet.library import SongLibrary
 from quodlibet.util.songwrapper import SongWrapper
 
-from . import prdb
+from . import attrs, prdb
 
 from .config import Config
-from .errors import Error
+from .errors import Error, ErrorCode
 from .helpers import (
     FPContext,
     is_exportable,
-    get_or_calc_fp,
 )
 
 from .dlg_base import DlgBase, Songs, TaskProgress
@@ -98,9 +99,27 @@ class Dlg(DlgBase):
 
     @override
     def _processor(self, ctx: FPContext, song: SongWrapper) -> bool | Error:
-        fp = get_or_calc_fp(ctx, song)
+        # Ensure the fingerprint of the song
+        if attrs.FP_ID not in song:
+            return Error(ErrorCode.FINGERPRINT_ERROR)
 
-        if isinstance(fp, Error):
-            return fp
+        fp_id = song[attrs.FP_ID]
+        basename = song(attrs.BASENAME)
+        rating = int(song(attrs.RATING) * attrs.RAITING_SCALE)
+        ts = 0
+        if "~#laststarted" in song:
+            ts = song("~#laststarted")
 
-        return prdb.update_song_in_db(self._config.db_path, fp, song, self._force_export)
+        rec = prdb.get_song(self._config.db_path, fp_id)
+
+        rec_ts = rec.updated_at if rec.updated_at is not None else rec.created_at
+
+        if self._force_export or (ts > rec_ts):
+            if basename != rec.basename or rating != rec.rating:
+                rec.basename = basename
+                rec.rating = rating
+                rec.updated_at = int(time.time())
+                prdb.force_song_update(self._config.db_path, rec)
+                return True
+
+        return False

@@ -15,13 +15,30 @@ from .trace import print_d
 from .fingerprint import Fingerprint
 
 
-class DBRecord:
+class DBRecordBase:
     fp_id: int
     basename: str
     rating: int
-    fp: Fingerprint
     created_at: int
     updated_at: int | None
+
+    def __init__(
+        self,
+        fp_id: int,
+        basename: str,
+        rating: int,
+        created_at: int,
+        updated_at: int | None,
+    ) -> None:
+        self.fp_id = fp_id
+        self.basename = basename
+        self.rating = rating
+        self.created_at = created_at
+        self.updated_at = updated_at
+
+
+class DBRecord(DBRecordBase):
+    fp: Fingerprint
 
     def __init__(
         self,
@@ -33,11 +50,7 @@ class DBRecord:
         created_at: int,
         updated_at: int | None,
     ) -> None:
-        self.fp_id = fp_id
-        self.basename = basename
-        self.rating = rating
-        self.created_at = created_at
-        self.updated_at = updated_at
+        super().__init__(fp_id, basename, rating, created_at, updated_at)
 
         if isinstance(fp, bytes):
             self.fp = Fingerprint(fp, fp_hash)
@@ -97,7 +110,7 @@ def add_song(db_path: str, basename: str, rating: int, fp: Fingerprint) -> DBRec
             )
 
 
-def force_song_update(db_path: str, song: DBRecord) -> None:
+def force_song_update(db_path: str, song: DBRecordBase) -> None:
     """Force record update (all columns, including created_at and updated_at)"""
 
     update_query = (
@@ -119,7 +132,10 @@ def force_song_update(db_path: str, song: DBRecord) -> None:
                     song.fp_id,
                 ),
             )
-            print_d(f"Forcibly Updated song in DB: #{song.fp_id}")
+            print_d(
+                f"Forcibly updated song in DB: #{song.fp_id}, rating: {song.rating},"
+                f" basename: '{song.basename}'"
+            )
 
 
 def update_song_if_different(
@@ -151,6 +167,26 @@ def update_song_if_different(
                 return True
 
     return False
+
+
+def get_song(db_path: str, fp_id: int) -> DBRecordBase:
+
+    select_one_query = (
+        "SELECT id, basename, rating, created_at, updated_at FROM songs WHERE id = ?;"
+    )
+
+    with closing(sqlite3.connect(db_path)) as conn:
+        with conn:
+            cursor = conn.cursor()
+            cursor.execute(select_one_query, (fp_id,))
+
+            row = cursor.fetchone()
+            if row is None:
+                raise sqlite3.DatabaseError(
+                    f"get_song: record with fp_id #{fp_id} not found"
+                )
+
+            return DBRecordBase(*row)
 
 
 def get_songs(db_path: str) -> list[DBRecord]:
