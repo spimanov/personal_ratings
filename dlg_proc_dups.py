@@ -55,7 +55,7 @@ class Dlg(DlgBase[Context]):
 
         for s in self._library.values():
             if is_updatable(s):
-                if attrs.FINGERPRINT in s:
+                if attrs.FP_ID in s:
                     songs.append(SongWrapper(s))
                 else:
                     msg = f"{s(attrs.FILENAME)} does not have fingerprint, skipped"
@@ -120,15 +120,15 @@ class Dlg(DlgBase[Context]):
             song = songs.popleft()
 
             try:
-                fp = song(attrs.FINGERPRINT)
+                fp_id = song(attrs.FP_ID)
 
                 result.total_processed += 1
                 in_batch += 1
                 progress.total_processed = result.total_processed
 
-                dups = list(filter(lambda s: s(attrs.FINGERPRINT) == fp, songs))
+                dups = list(filter(lambda s: s(attrs.FP_ID) == fp_id, songs))
                 if len(dups) > 0:
-                    songs = deque(filter(lambda s: s(attrs.FINGERPRINT) != fp, songs))
+                    songs = deque(filter(lambda s: s(attrs.FP_ID) != fp_id, songs))
                     progress.succeeded = [song, *dups]
                     result.total_skipped += len(dups)
                     result.total_processed += len(dups)
