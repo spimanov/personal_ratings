@@ -11,17 +11,19 @@
 "dlg_sync_with_ext.py" = ["E402"]
 
 [tool.pyright]
+# Relative paths specified within the config file are relative to the config file’s location.
+
 typeCheckingMode = "standard"
 reportMissingTypeStubs = false
 # reportPrivateImportUsage = false
 
 extraPaths = [
-    "/home/pipa/tools/quodlibet/quodlibet",
+    "../quodlibet",
 ]
 
 # stubPath uses ~/typings by default
 # stubPath = "./quodlibet-stubs"
-# extraPaths = [".venv/lib/python3.13/site-packages/gi-stubs"]
+# extraPaths = ["../.venv/lib/python3.13/site-packages/gi-stubs"]
 
-venvPath = "/home/pipa/tools/quodlibet"
+venvPath = "../"
 venv = ".venv"

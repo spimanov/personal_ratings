@@ -77,8 +77,15 @@ for s in val:
     if fp in s:
         del s[fp]
 ```
-
-Scanning library: 4032 songs...
-To process: 4032 songs
---------------------------------------------------------------------------------
-Done: processed: 4032, unprocessed: 0, skipped: 0, duration: 1996.20 sec
+# Save all songs to a file
+```
+import os
+filename = os.path.expanduser("~/songs.txt")
+f=open(filename,"w")
+fp_id_name='~#fp_id'
+for idx, s in enumerate(vals):
+    fp_id = s[fp_id_name] if fp_id_name in s else 0
+    idx += 1
+    f.write(f"{idx:04d} : {fp_id:04d} : {s['~filename']}\n")
+f.close()
+```
