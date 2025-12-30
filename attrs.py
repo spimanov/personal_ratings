@@ -16,6 +16,3 @@ RATING = "~#rating"
 FILENAME = "~filename"
 """ Can be obtained by using th __getitem__"""
 
-
-RAITING_SCALE = 1000
-EPSILON = 0.01

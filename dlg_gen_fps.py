@@ -24,6 +24,8 @@ from .prdb import DBRecord
 from .helpers import (
     FPContext,
     is_updatable,
+    rating_to_int,
+    rating_to_float
 )
 from .trace import print_d
 
@@ -121,10 +123,10 @@ class Dlg(DlgBase):
 
         if db_record is None:
             basename: str = song(attrs.BASENAME)
-            rating: int = int(song(attrs.RATING) * attrs.RAITING_SCALE)
+            rating: int = rating_to_int(song(attrs.RATING))
             db_record = prdb.add_song(self._config.db_path, basename, rating, fp)
         else:
-            song[attrs.RATING] = db_record.rating / attrs.RAITING_SCALE
+            song[attrs.RATING] = rating_to_float(db_record.rating)
             print_d(f"duplicate fp_id: {db_record.fp_id} '{db_record.basename}' => '{filename}'")
 
         song[attrs.FP_ID] = db_record.fp_id

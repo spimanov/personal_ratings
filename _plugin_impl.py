@@ -16,13 +16,15 @@ from . import attrs, prdb
 from .async_updater import AsyncUpdater, TaskResult
 from .config import Config
 from .errors import Error, ErrorCode
-from .prdb import DBRecord
-
 from .helpers import (
     FPContext,
+    are_not_equal,
     is_exportable,
     is_updatable,
+    rating_to_float,
+    rating_to_int,
 )
+from .prdb import DBRecord
 from .trace import print_d, print_e, print_thread_id, print_w
 
 # Note: Check the primary QL file: quodlibet/formats/_audio.py
@@ -66,7 +68,7 @@ class AsyncUpdChanged(AsyncUpdater[FPContext]):
             # It's new fingeprint, updating of other QL-songs is not needed - return False
             if db_record is None:
                 basename: str = song(attrs.BASENAME)
-                rating: int = int(song(attrs.RATING) * attrs.RAITING_SCALE)
+                rating: int = rating_to_int(song(attrs.RATING))
                 db_record = prdb.add_song(self._config.db_path, basename, rating, fp)
                 song[attrs.FP_ID] = db_record.fp_id
                 return False
@@ -76,14 +78,14 @@ class AsyncUpdChanged(AsyncUpdater[FPContext]):
             fp_id = db_record.fp_id
             basename = song(attrs.BASENAME)
             if db_record.rating == 0:
-                rating = int(song(attrs.RATING) * attrs.RAITING_SCALE)
+                rating = rating_to_int(song(attrs.RATING))
             else:
-                song[attrs.RATING] = db_record.rating / attrs.RAITING_SCALE
+                song[attrs.RATING] = rating_to_float(db_record.rating)
                 rating = db_record.rating
         else:
             fp_id = song[attrs.FP_ID]
             basename = song(attrs.BASENAME)
-            rating = int(song(attrs.RATING) * attrs.RAITING_SCALE)
+            rating = rating_to_int(song(attrs.RATING))
 
         if prdb.update_song_if_different(self._config.db_path, fp_id, basename, rating):
             # The DB record has been updated, it is needed to update duplicated songs
@@ -118,7 +120,7 @@ class AsyncUpdChanged(AsyncUpdater[FPContext]):
                 # raings in QLDB are in float, thus dorect comparing is not applicable
                 # use Epsilon checking instead
                 if s[attrs.FP_ID] == fp_id and (s.key != song.key):
-                    if abs(s(attrs.RATING) - rating) > attrs.EPSILON:
+                    if are_not_equal(s(attrs.RATING), rating):
                         s[attrs.RATING] = rating
                         dups.append(SongWrapper(s))
 
@@ -161,13 +163,13 @@ class AsyncUpdAdded(AsyncUpdater[FPContext]):
 
         if db_record is None:
             basename: str = song(attrs.BASENAME)
-            rating: int = int(song(attrs.RATING) * attrs.RAITING_SCALE)
+            rating: int = rating_to_int(song(attrs.RATING))
             db_record = prdb.add_song(self._config.db_path, basename, rating, fp)
             song[attrs.FP_ID] = db_record.fp_id
             return False
 
         song[attrs.FP_ID] = db_record.fp_id
-        song[attrs.RATING] = db_record.rating / attrs.RAITING_SCALE
+        song[attrs.RATING] = rating_to_float(db_record.rating)
 
         return True
 

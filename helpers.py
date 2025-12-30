@@ -19,6 +19,8 @@ from .fp_decompressor import FingerprintDecompressor
 from .async_updater import Context
 from .trace import print_d, print_e
 
+RAITING_SCALE = 1000
+EPSILON = 0.01
 
 class FPContext(Context):
     _fp_calc: FingerprintCalculator
@@ -50,3 +52,15 @@ def is_updatable(song: SongWrapper) -> bool:
 
 def is_exportable(song: SongWrapper) -> bool:
     return is_finite(song) and is_a_file(song) and attrs.RATING in song
+
+def are_equal(left: float, right: float) -> bool:
+    return abs(left - right) <= EPSILON
+
+def are_not_equal(left: float, right: float) -> bool:
+    return abs(left - right) > EPSILON
+
+def rating_to_int(r: float) -> int:
+    return int(r * RAITING_SCALE)
+
+def rating_to_float(r: int) -> float:
+    return r / RAITING_SCALE

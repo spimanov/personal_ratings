@@ -36,6 +36,9 @@ class DBRecordBase:
         self.created_at = created_at
         self.updated_at = updated_at
 
+    def timestamp(self) -> int:
+        return self.updated_at if self.updated_at is not None else self.created_at
+
 
 class DBRecord(DBRecordBase):
     fp: Fingerprint
@@ -115,7 +118,7 @@ def force_song_update(db_path: str, song: DBRecordBase) -> None:
 
     update_query = (
         "UPDATE songs SET "
-        "basename = ?, rating = ?, created_at = ?, updated_at = ? "
+        "basename = ?, rating = ?, updated_at = ? "
         "WHERE id = ?;"
     )
 
@@ -127,7 +130,6 @@ def force_song_update(db_path: str, song: DBRecordBase) -> None:
                 (
                     song.basename,
                     song.rating,
-                    song.created_at,
                     song.updated_at,
                     song.fp_id,
                 ),

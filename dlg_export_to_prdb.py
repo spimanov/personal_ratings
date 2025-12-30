@@ -7,27 +7,22 @@
 
 
 import time
+
 import gi
 
 gi.require_version("Gtk", "3.0")
-from gi.repository import Gtk
-
-from typing import cast, override
 from collections import deque
+from typing import cast, override
 
+from gi.repository import Gtk
 from quodlibet.library import SongLibrary
 from quodlibet.util.songwrapper import SongWrapper
 
 from . import attrs, prdb
-
 from .config import Config
-from .errors import Error, ErrorCode
-from .helpers import (
-    FPContext,
-    is_exportable,
-)
-
 from .dlg_base import DlgBase, Songs, TaskProgress
+from .errors import Error, ErrorCode
+from .helpers import FPContext, is_exportable, rating_to_int
 
 
 class Dlg(DlgBase):
@@ -105,14 +100,14 @@ class Dlg(DlgBase):
 
         fp_id = song[attrs.FP_ID]
         basename = song(attrs.BASENAME)
-        rating = int(song(attrs.RATING) * attrs.RAITING_SCALE)
+        rating = rating_to_int(song(attrs.RATING))
         ts = 0
         if "~#laststarted" in song:
             ts = song("~#laststarted")
 
         rec = prdb.get_song(self._config.db_path, fp_id)
 
-        rec_ts = rec.updated_at if rec.updated_at is not None else rec.created_at
+        rec_ts = rec.timestamp()
 
         if self._force_export or (ts > rec_ts):
             if basename != rec.basename or rating != rec.rating:

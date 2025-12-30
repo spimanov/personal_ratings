@@ -8,23 +8,18 @@
 import gi
 
 gi.require_version("Gtk", "3.0")
-from gi.repository import Gtk
-
-from typing import cast, override
 from collections import deque
+from typing import cast, override
 
+from gi.repository import Gtk
 from quodlibet.library import SongLibrary
 from quodlibet.util.songwrapper import SongWrapper
 
 from . import attrs, prdb
-
 from .config import Config
 from .dlg_base import DlgBase, Songs, TaskProgress
 from .errors import Error, ErrorCode
-from .helpers import (
-    FPContext,
-    is_updatable,
-)
+from .helpers import FPContext, is_updatable, rating_to_float, rating_to_int
 
 
 class Dlg(DlgBase):
@@ -94,19 +89,19 @@ class Dlg(DlgBase):
             return Error(ErrorCode.FINGERPRINT_ERROR)
 
         fp_id = song[attrs.FP_ID]
-        rating = int(song(attrs.RATING) * attrs.RAITING_SCALE)
+        rating = rating_to_int(song(attrs.RATING))
         ts = 0
         if "~#laststarted" in song:
             ts = song("~#laststarted")
 
         rec = prdb.get_song(self._config.db_path, fp_id)
 
-        rec_ts = rec.updated_at if rec.updated_at is not None else rec.created_at
+        rec_ts = rec.timestamp()
 
         if self._force_import or (ts < rec_ts):
             if rating != rec.rating:
                 if rating != rec.rating:
-                    song[attrs.RATING] = rec.rating / attrs.RAITING_SCALE
+                    song[attrs.RATING] = rating_to_float(rec.rating)
                 song["~#laststarted"] = rec_ts
                 return True
 
