@@ -81,6 +81,7 @@ class Dlg(DlgBase):
             msg = "Nothing to process"
 
         self._async_log(msg)
+        self._progress.set_text(None)
 
         return songs
 
