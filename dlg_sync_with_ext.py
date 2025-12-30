@@ -180,6 +180,8 @@ class Dlg(DlgBase):
 
         self._count_songs_to_process = len(inl) + len(inr)
 
+        inl_copy = list(inl)
+
         # ================================================================================
         # Step 1, iterate over the left (local)
         while len(inl):
@@ -224,8 +226,25 @@ class Dlg(DlgBase):
             if recr.timestamp() < timestamp:
                 continue
 
-            to_addl.append(recr)
+            recl = extract_rec(recr, inl_copy)
+
             _step(1)
+
+            if recl is None:
+                to_addl.append(recr)
+            else:
+                if are_equal(recl.rating, recr.rating):
+                    continue
+                l_ts = recl.timestamp()
+                r_ts = recr.timestamp()
+                if l_ts < r_ts:
+                    recl.rating = recr.rating
+                    recl.updated_at = r_ts
+                    to_updl.append(recl)
+                else:
+                    recr.rating = recl.rating
+                    recr.updated_at = l_ts
+                    to_updr.append(recr)
 
         self._progress.set_fraction(1.0)
         self._progress.set_text(None)
