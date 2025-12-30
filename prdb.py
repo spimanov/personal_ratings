@@ -211,6 +211,27 @@ def get_songs(db_path: str) -> list[DBRecord]:
 
     return result
 
+def get_songs_not_older(db_path: str, timestamp: int) -> list[DBRecord]:
+
+    select_query = (
+        "SELECT id, basename, rating, fp_hash, fingerprint, created_at, updated_at "
+        "FROM songs "
+        "WHERE ((updated_at IS NOT NULL) AND (updated_at >= ?)) OR (created_at >= ?);"
+    )
+
+    result: list[DBRecord] = []
+    with closing(sqlite3.connect(db_path)) as conn:
+        with conn:
+            cursor = conn.cursor()
+            cursor.execute(select_query, (timestamp, timestamp))
+
+            # Fetch all results
+            rows = cursor.fetchall()
+            for row in rows:
+                result.append(DBRecord(*row))
+
+    return result
+
 
 def get_songs_by_hash(
     db_path: str, ext_path: str, hash: int, distance: int

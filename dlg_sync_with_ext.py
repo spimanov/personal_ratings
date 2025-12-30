@@ -7,12 +7,14 @@
 
 
 import gi
+import re
+import time
 
 gi.require_version("Gtk", "3.0")
 from gi.repository import Gtk
 from gi.repository.Gio import Cancellable
 
-from typing import override
+from typing import cast, override
 from pathlib import Path
 
 from quodlibet.library import SongLibrary
@@ -25,11 +27,57 @@ from .dlg_base import DlgBase, TaskProgress, TaskResult
 from .errors import Error, ErrorCode
 from .helpers import FPContext, is_updatable, rating_to_float, are_equal
 from .prdb import DBRecord, DBRecordBase
+from .trace import print_e, print_d
 
 
 class CancelledError(Exception):
     def __init__(self) -> None:
         super().__init__("Cancelled")
+
+
+def parse_time_to_seconds(time_string: str) -> int | None:
+    """
+    Converts a time string with a suffix (d, h, m, s) to seconds.
+
+    Args:
+        time_string (str): The input time string (e.g., '10d', '5h', '30m', '15s').
+        value without the prefix considered as hours
+
+    Returns:
+        int: The total number of seconds.
+        None: If the input format is invalid.
+    """
+    # Define the conversion factors
+    unit_multipliers = {"s": 1, "m": 60, "h": 3600, "d": 86400}  # 24 * 3600
+
+    if len(time_string) == 0:
+        return None
+
+    time_string = time_string.lower()
+    match = re.search(r"^\s*(\d{1,6})\s*([smhd]?)\s*$", time_string)
+
+    if not match:
+        return None
+
+    # Extract the numeric value and the unit character
+    try:
+        # The number part might be an integer or a float
+        value = int(match.group(1))
+        unit = match.group(2)
+    except (ValueError, IndexError):
+        print_e(f"Error: Invalid input format for '{time_string}'")
+        return None
+
+    if len(unit) == 0:
+        unit = "h"
+
+    # Perform the conversion
+    if unit in unit_multipliers:
+        total_seconds = value * unit_multipliers[unit]
+        return total_seconds
+    else:
+        print_e(f"Error: Unknown time unit '{unit}' in '{time_string}'")
+        return None
 
 
 def extract_rec(rec: DBRecord, db_records: list[DBRecord]) -> DBRecord | None:
@@ -46,15 +94,37 @@ def extract_rec(rec: DBRecord, db_records: list[DBRecord]) -> DBRecord | None:
 
 class Dlg(DlgBase):
     def __init__(self, config: Config, parent: Gtk.Window, library: SongLibrary):
-        super().__init__("dlg_proc_dups.glade", config, parent, library)
+        super().__init__("dlg_sync_with_ext.glade", config, parent, library)
+        self._age = 0
 
     @override
     def _init_ui(self, parent: Gtk.Window, builder: Gtk.Builder) -> None:
         super()._init_ui(parent, builder)
 
+        self._age_eb = cast(Gtk.Entry, builder.get_object("age"))
+
         if not Path(self._config.ext_db_path).is_file():
             # Create new external database if not exists
             prdb.create_db(self._config.ext_db_path)
+
+    @override
+    def _start_btn_clicked_cb(self, btn: Gtk.Button) -> None:
+        age_str = self._age_eb.get_text()
+        if len(age_str) == 0:
+            self._age = 60 * 60 * 24
+            self._log(f"Age is empty, has been set to 1 day ({self._age} seconds)")
+        else:
+            value = parse_time_to_seconds(age_str)
+            if value is None:
+                self._log(f"Age format is invalid: {age_str}")
+                return
+            self._age = value
+            if self._age != 0:
+                self._log(f"Age: {self._age} seconds")
+            else:
+                self._log("Age: 0 => all records will be processed")
+
+        super()._start_btn_clicked_cb(btn)
 
     @override
     def _create_context(self) -> FPContext:
@@ -66,7 +136,11 @@ class Dlg(DlgBase):
             self._library.changed(progress.succeeded)
 
     def _get_diff(
-        self, inl: list[DBRecord], inr: list[DBRecord], cancellable: Cancellable
+        self,
+        inl: list[DBRecord],
+        inr: list[DBRecord],
+        timestamp: int,
+        cancellable: Cancellable,
     ) -> tuple[list[DBRecord], list[DBRecordBase], list[DBRecord], list[DBRecordBase]]:
 
         result = TaskResult()
@@ -115,6 +189,9 @@ class Dlg(DlgBase):
 
             recl = inl.pop(0)
 
+            if recl.timestamp() < timestamp:
+                continue
+
             recr = extract_rec(recl, inr)
 
             _step(2)
@@ -143,6 +220,10 @@ class Dlg(DlgBase):
                 raise CancelledError()
 
             recr = inr.pop(0)
+
+            if recr.timestamp() < timestamp:
+                continue
+
             to_addl.append(recr)
             _step(1)
 
@@ -205,24 +286,32 @@ class Dlg(DlgBase):
             _send_update(count_batch > self._batch_size)
 
         try:
+            if self._age == 0:
+                timestamp = 0
+            else:
+                timestamp = int(time.time()) - self._age
+                if timestamp < 0:
+                    timestamp = 0
 
-            self._async_log("Loading local PRDB...")
+            self._async_log("Loading records from the local PRDB...")
             loc = prdb.get_songs(self._config.db_path)
-            self._async_log(f"Local PRDB contains {len(loc)} records")
+
+            self._async_log(f"Loaded {len(loc)} records from the local PRDB")
 
             if cancellable.is_cancelled():
                 raise CancelledError()
 
-            self._async_log("Loading external PRDB...")
+            self._async_log("Loading records from the external PRDB...")
             ext = prdb.get_songs(self._config.ext_db_path)
-            self._async_log(f"External PRDB contains {len(ext)} records")
+            self._async_log(f"Loaded {len(ext)} records from the external PRDB")
 
             if cancellable.is_cancelled():
                 raise CancelledError()
-
 
             self._async_log("Comparing databases...")
-            to_addl, to_updl, to_addr, to_updr = self._get_diff(loc, ext, cancellable)
+            to_addl, to_updl, to_addr, to_updr = self._get_diff(
+                loc, ext, timestamp, cancellable
+            )
 
             self._async_log(
                 f"to import <= add: {len(to_addl)}, upd: {len(to_updl)} records"
