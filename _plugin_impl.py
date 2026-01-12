@@ -162,10 +162,8 @@ class AsyncUpdAdded(AsyncUpdater[FPContext]):
                 break
 
         if db_record is None:
-            basename: str = song(attrs.BASENAME)
-            rating: int = rating_to_int(song(attrs.RATING))
-            db_record = prdb.add_song(self._config.db_path, basename, rating, fp)
-            song[attrs.FP_ID] = db_record.fp_id
+            # If song is really a new one (in the QLDB), do not add it to the PRDB -
+            # it will be added by the AsyncUpdChanged handler
             return False
 
         song[attrs.FP_ID] = db_record.fp_id
