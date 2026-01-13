@@ -37,7 +37,9 @@ class DBRecordBase:
         self.updated_at = updated_at
 
     def timestamp(self) -> int:
-        return self.updated_at if self.updated_at is not None else self.created_at
+        if self.updated_at is None:
+            return 0
+        return self.updated_at
 
 
 class DBRecord(DBRecordBase):
@@ -77,11 +79,46 @@ def create_db(db_path: str):
     print_d(f"New PRDB has been created on: '{db_path}'")
 
 
+def add_empty_song(db_path: str, basename: str, fp: Fingerprint) -> DBRecord:
+    """Create a record int he PRDB, but its rating is unspecified"""
+
+    insert_query = (
+        "INSERT INTO songs (basename, fp_hash, fingerprint, created_at) "
+        "VALUES (?, ?, ?, ?) RETURNING id;"
+    )
+
+    with closing(sqlite3.connect(db_path)) as conn:
+        with conn:
+            cursor = conn.cursor()
+
+            # Get the current Unix epoch timestamp as an integer
+            # time.time() returns a float, so we cast it to an int for second precision
+            created_at = int(time.time())
+
+            cursor.execute(insert_query, (basename, fp.hash(), fp.as_blob(), created_at))
+            row = cursor.fetchone()
+            if not row:
+                raise sqlite3.DatabaseError("add_song: insert_query returned None")
+
+            (song_id,) = row
+            print_d(f"Added new song into DB: #{song_id}: '{basename}'")
+
+            return DBRecord(
+                song_id,
+                basename,
+                0,
+                None,
+                fp,
+                created_at,
+                None,
+            )
+
+
 def add_song(db_path: str, basename: str, rating: int, fp: Fingerprint) -> DBRecord:
 
     insert_query = (
-        "INSERT INTO songs (basename, rating, fp_hash, fingerprint, created_at) "
-        "VALUES (?, ?, ?, ?, ?) RETURNING id;"
+        "INSERT INTO songs (basename, rating, fp_hash, fingerprint, created_at,"
+        " updated_at) VALUES (?, ?, ?, ?, ?, ?) RETURNING id;"
     )
 
     with closing(sqlite3.connect(db_path)) as conn:
@@ -93,7 +130,8 @@ def add_song(db_path: str, basename: str, rating: int, fp: Fingerprint) -> DBRec
             created_at = int(time.time())
 
             cursor.execute(
-                insert_query, (basename, rating, fp.hash(), fp.as_blob(), created_at)
+                insert_query,
+                (basename, rating, fp.hash(), fp.as_blob(), created_at, created_at),
             )
             row = cursor.fetchone()
             if not row:
@@ -109,7 +147,47 @@ def add_song(db_path: str, basename: str, rating: int, fp: Fingerprint) -> DBRec
                 None,
                 fp,
                 created_at,
+                created_at,
+            )
+
+
+def add_record(db_path: str, rec: DBRecord) -> DBRecord:
+
+    insert_query = (
+        "INSERT INTO songs (basename, rating, fp_hash, fingerprint, created_at,"
+        " updated_at) VALUES (?, ?, ?, ?, ?, ?) RETURNING id;"
+    )
+
+    with closing(sqlite3.connect(db_path)) as conn:
+        with conn:
+            cursor = conn.cursor()
+
+            cursor.execute(
+                insert_query,
+                (
+                    rec.basename,
+                    rec.rating,
+                    rec.fp.hash(),
+                    rec.fp.as_blob(),
+                    rec.created_at,
+                    rec.updated_at,
+                ),
+            )
+            row = cursor.fetchone()
+            if not row:
+                raise sqlite3.DatabaseError("add_song: insert_query returned None")
+
+            (song_id,) = row
+            print_d(f"Added new song into DB: #{song_id}: '{rec.basename}'")
+
+            return DBRecord(
+                song_id,
+                rec.basename,
+                rec.rating,
                 None,
+                rec.fp,
+                rec.created_at,
+                rec.updated_at,
             )
 
 
@@ -117,9 +195,7 @@ def force_song_update(db_path: str, song: DBRecordBase) -> None:
     """Force record update (all columns, including created_at and updated_at)"""
 
     update_query = (
-        "UPDATE songs SET "
-        "basename = ?, rating = ?, updated_at = ? "
-        "WHERE id = ?;"
+        "UPDATE songs SET basename = ?, rating = ?, updated_at = ? WHERE id = ?;"
     )
 
     with closing(sqlite3.connect(db_path)) as conn:
@@ -149,7 +225,10 @@ def update_song_if_different(
         "UPDATE songs SET "
         "basename = ?, rating = ?, "
         "updated_at = unixepoch() WHERE "
-        "id = ? AND ((basename != ?) OR (rating != ?));"
+        "id = ? AND ("
+        "(basename != ?) OR (updated_at IS NULL) "
+        " OR ((updated_at IS NOT NULL) and (rating != ?))"
+        ");"
     )
 
     with closing(sqlite3.connect(db_path)) as conn:
@@ -210,6 +289,7 @@ def get_songs(db_path: str) -> list[DBRecord]:
                 result.append(DBRecord(*row))
 
     return result
+
 
 def get_songs_not_older(db_path: str, timestamp: int) -> list[DBRecord]:
 

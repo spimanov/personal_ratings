@@ -21,12 +21,7 @@ from . import attrs, prdb
 from .config import Config
 from .errors import Error, ErrorCode
 from .prdb import DBRecord
-from .helpers import (
-    FPContext,
-    is_updatable,
-    rating_to_int,
-    rating_to_float
-)
+from .helpers import FPContext, is_updatable, rating_to_int, rating_to_float
 from .trace import print_d
 
 from .dlg_base import DlgBase, Songs, TaskProgress
@@ -125,10 +120,17 @@ class Dlg(DlgBase):
         if db_record is None:
             basename: str = song(attrs.BASENAME)
             rating: int = rating_to_int(song(attrs.RATING))
-            db_record = prdb.add_song(self._config.db_path, basename, rating, fp)
+            if rating == 0:
+                db_record = prdb.add_empty_song(self._config.db_path, basename, fp)
+            else:
+                db_record = prdb.add_song(self._config.db_path, basename, rating, fp)
         else:
-            song[attrs.RATING] = rating_to_float(db_record.rating)
-            print_d(f"duplicate fp_id: {db_record.fp_id} '{db_record.basename}' => '{filename}'")
+            if db_record.updated_at is not None:
+                song[attrs.RATING] = rating_to_float(db_record.rating)
+            print_d(
+                f"duplicate fp_id: {db_record.fp_id} '{db_record.basename}' =>"
+                f" '{filename}'"
+            )
 
         song[attrs.FP_ID] = db_record.fp_id
 

@@ -73,20 +73,15 @@ class AsyncUpdChanged(AsyncUpdater[FPContext]):
                 song[attrs.FP_ID] = db_record.fp_id
                 return False
 
-            # The fingerprint is in the DB, update the song by values from the DB
+            # The fingerprint is already in the DB, update the song by values from the DB
             song[attrs.FP_ID] = db_record.fp_id
+
             fp_id = db_record.fp_id
-            basename = song(attrs.BASENAME)
-            if db_record.rating == 0:
-                rating = rating_to_int(song(attrs.RATING))
-            else:
-                song[attrs.RATING] = rating_to_float(db_record.rating)
-                rating = db_record.rating
         else:
             fp_id = song[attrs.FP_ID]
-            basename = song(attrs.BASENAME)
-            rating = rating_to_int(song(attrs.RATING))
 
+        basename = song(attrs.BASENAME)
+        rating = rating_to_int(song(attrs.RATING))
         if prdb.update_song_if_different(self._config.db_path, fp_id, basename, rating):
             # The DB record has been updated, it is needed to update duplicated songs
             # in the QLDB
@@ -162,9 +157,12 @@ class AsyncUpdAdded(AsyncUpdater[FPContext]):
                 break
 
         if db_record is None:
-            # If song is really a new one (in the QLDB), do not add it to the PRDB -
-            # it will be added by the AsyncUpdChanged handler
-            return False
+            # If song is really a new one (for the QLDB), add it to the PRDB, but without
+            # the song's rating
+            basename: str = song(attrs.BASENAME)
+            db_record = prdb.add_empty_song(self._config.db_path, basename, fp)
+            song[attrs.FP_ID] = db_record.fp_id
+            return True
 
         song[attrs.FP_ID] = db_record.fp_id
         song[attrs.RATING] = rating_to_float(db_record.rating)

@@ -368,7 +368,7 @@ class Dlg(DlgBase):
             # ===========================================================================
             # Add new records to the local PRDB
             for rec in to_addl:
-                prdb.add_song(self._config.db_path, rec.basename, rec.rating, rec.fp)
+                prdb.add_record(self._config.db_path, rec)
                 _step()
 
             _send_update(count_batch != 0)
@@ -384,7 +384,7 @@ class Dlg(DlgBase):
             # ===========================================================================
             # Add new records to the external PRDB
             for rec in to_addr:
-                prdb.add_song(self._config.ext_db_path, rec.basename, rec.rating, rec.fp)
+                prdb.add_record(self._config.ext_db_path, rec)
                 _step()
 
             _send_update(count_batch != 0)
