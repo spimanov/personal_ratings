@@ -201,7 +201,10 @@ class Dlg(DlgBase):
             if recr is None:
                 to_addr.append(recl)
             else:
-                if are_equal(recl.rating, recr.rating):
+                if (
+                    are_equal(recl.rating, recr.rating)
+                    and recl.updated_at == recr.updated_at
+                ):
                     continue
                 l_ts = recl.timestamp()
                 r_ts = recr.timestamp()
@@ -233,7 +236,10 @@ class Dlg(DlgBase):
             if recl is None:
                 to_addl.append(recr)
             else:
-                if are_equal(recl.rating, recr.rating):
+                if (
+                    are_equal(recl.rating, recr.rating)
+                    and recl.updated_at == recr.updated_at
+                ):
                     continue
                 l_ts = recl.timestamp()
                 r_ts = recr.timestamp()

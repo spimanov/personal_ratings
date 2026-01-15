@@ -102,20 +102,20 @@ class Dlg(DlgBase):
         fp_id = song[attrs.FP_ID]
         basename = song(attrs.BASENAME)
         rating = rating_to_int(song(attrs.RATING))
+
+        if self._force_export:
+            prdb.update_song(self._config.db_path, fp_id, basename, rating)
+            return True
+
         ts = 0
         if "~#laststarted" in song:
             ts = song("~#laststarted")
 
         rec = prdb.get_song(self._config.db_path, fp_id)
-
         rec_ts = rec.timestamp()
 
-        if self._force_export or (ts > rec_ts):
-            if basename != rec.basename or rating != rec.rating:
-                rec.basename = basename
-                rec.rating = rating
-                rec.updated_at = int(time.time())
-                prdb.force_song_update(self._config.db_path, rec)
-                return True
+        if (ts > rec_ts):
+            prdb.update_song_if_different(self._config.db_path, fp_id, basename, rating)
+            return True
 
         return False

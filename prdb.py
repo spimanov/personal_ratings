@@ -216,6 +216,35 @@ def force_song_update(db_path: str, song: DBRecordBase) -> None:
             )
 
 
+def update_song(db_path: str, song_id: int, basename: str, rating: int) -> bool:
+    """Forcibly update a record in DB"""
+
+    update_query = (
+        "UPDATE songs SET "
+        "basename = ?, rating = ?, "
+        "updated_at = unixepoch() WHERE "
+        "id = ?;"
+    )
+
+    with closing(sqlite3.connect(db_path)) as conn:
+        with conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                update_query,
+                (basename, rating, song_id),
+            )
+            conn.commit()
+
+            if cursor.rowcount > 0:
+                print_d(
+                    f"Updated song in DB: #{song_id}, rating: {rating}, basename:"
+                    f" '{basename}'"
+                )
+                return True
+
+    return False
+
+
 def update_song_if_different(
     db_path: str, song_id: int, basename: str, rating: int
 ) -> bool:
