@@ -71,6 +71,7 @@ class AsyncUpdChanged(AsyncUpdater[FPContext]):
                 rating: int = rating_to_int(song(attrs.RATING))
                 db_record = prdb.add_song(self._config.db_path, basename, rating, fp)
                 song[attrs.FP_ID] = db_record.fp_id
+                print_d(f"Changed (new): {filename}, rating: {rating}")
                 return False
 
             # The fingerprint is already in the DB, update the song by values from the DB
@@ -85,8 +86,10 @@ class AsyncUpdChanged(AsyncUpdater[FPContext]):
         if prdb.update_song_if_different(self._config.db_path, fp_id, basename, rating):
             # The DB record has been updated, it is needed to update duplicated songs
             # in the QLDB
+            print_d(f"Changed and updated: {basename}, rating: {rating}")
             return True
 
+        print_d(f"Changed but NOT updated: {basename}, rating: {rating}")
         return False
 
     @override
@@ -162,10 +165,12 @@ class AsyncUpdAdded(AsyncUpdater[FPContext]):
             basename: str = song(attrs.BASENAME)
             db_record = prdb.add_empty_song(self._config.db_path, basename, fp)
             song[attrs.FP_ID] = db_record.fp_id
+            print_d(f"Added new: {filename}")
             return True
 
         song[attrs.FP_ID] = db_record.fp_id
         song[attrs.RATING] = rating_to_float(db_record.rating)
+        print_d(f"Added (existing): {filename}, rating: {db_record.rating}")
 
         return True
 
@@ -194,25 +199,33 @@ class PluginImpl:
 
     def on_added(self, songs: list[SongWrapper]) -> None:
         print_thread_id()
+        print_d(f"len(songs): {len(songs)}")
+        for s in songs:
+            print_d(s[attrs.FILENAME])
 
-        # Assign stats from PRDB to the recently added songs (for songs, whose
-        # fingerprints are exist in the DB)
-        songs_to_update = [song for song in songs if is_updatable(song)]
-        self._upd_added.append(songs_to_update)
+        songs_to_add = [song for song in songs if is_updatable(song)]
+        print_d(f"len(songs_to_add): {len(songs_to_add)}")
+
+        self._upd_added.append(songs_to_add)
 
     def on_changed(self, songs: list[SongWrapper]) -> None:
         print_thread_id()
+        print_d(f"len(songs): {len(songs)}")
 
         # TODO to think about a single _cancellable member for the plugin
         # and the both updaters. Something like:
         # if self._cancellable.is_cancelled():
         #     return
+        for s in songs:
+            print_d(s[attrs.FILENAME])
 
         # Reduce songs list and get applicable
-        songs_to_export = [song for song in songs if is_exportable(song)]
+        songs_to_update = [song for song in songs if is_exportable(song)]
 
-        if len(songs_to_export) == 0:
+        print_d(f"len(songs_to_update): {len(songs_to_update)}")
+
+        if len(songs_to_update) == 0:
             # Nothing to update
             return
 
-        self._upd_changed.append(songs_to_export)
+        self._upd_changed.append(songs_to_update)
