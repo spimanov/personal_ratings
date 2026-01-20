@@ -31,7 +31,7 @@ from .trace import print_d, print_e, print_thread_id, print_w
 
 class AsyncUpdChanged(AsyncUpdater[FPContext]):
     def __init__(self, config: Config) -> None:
-        super().__init__()
+        super().__init__("on_changed", "Updating songs in PRDB...")
         self._config = config
 
     @override
@@ -151,7 +151,7 @@ class AsyncUpdChanged(AsyncUpdater[FPContext]):
 
 class AsyncUpdAdded(AsyncUpdater[FPContext]):
     def __init__(self, config: Config) -> None:
-        super().__init__()
+        super().__init__("on_added", "Comparing fingerprints in the PRDB...")
         self._config = config
 
     @override

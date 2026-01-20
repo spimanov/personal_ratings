@@ -18,6 +18,7 @@ from gi.repository.Gio import Cancellable
 
 from quodlibet.util.songwrapper import SongWrapper
 from quodlibet.util.thread import call_async_background
+from quodlibet.qltk.notif import Task
 
 from .errors import ErrorCode, Error
 from .trace import print_e, print_w, print_d, print_thread_id
@@ -34,6 +35,10 @@ T = TypeVar("T", bound=Context)
 
 class AsyncUpdater(ABC, Generic[T]):
 
+    _ui_task_name: str
+
+    _ui_task_descr: str
+
     _cancellable: Cancellable
 
     _lock: threading.Lock
@@ -44,13 +49,18 @@ class AsyncUpdater(ABC, Generic[T]):
 
     _is_running: bool
 
-    def __init__(self) -> None:
+    _ui_task: Task | None
+
+    def __init__(self, task_name, task_descr) -> None:
         super().__init__()
+        self._ui_task_name = task_name
+        self._ui_task_descr = task_descr
         self._lock = threading.Lock()
         self._cancellable = Cancellable()
         self._queue = deque()
         self._timer_id = 0
         self._is_running = False
+        self._ui_task = None
 
     def stop(self) -> None:
         self._cancellable.cancel()
@@ -64,6 +74,8 @@ class AsyncUpdater(ABC, Generic[T]):
             return
 
         with self._lock:
+            if self._ui_task is None:
+                self._ui_task = Task(self._ui_task_name, self._ui_task_descr)
             for song in songs:
                 self._queue.append(song)
 
@@ -89,6 +101,10 @@ class AsyncUpdater(ABC, Generic[T]):
 
         with self._lock:
             if len(self._queue) == 0:
+                if self._ui_task is not None:
+                    self._ui_task.finish()
+                    self._ui_task = None
+
                 return GLib.SOURCE_REMOVE
 
         assert not self._is_running
@@ -135,6 +151,10 @@ class AsyncUpdater(ABC, Generic[T]):
 
         if timeout != 0:
             self._timer_id = GLib.timeout_add(timeout, self._on_timer_event)
+        else:
+            if self._ui_task is not None:
+                self._ui_task.finish()
+                self._ui_task = None
 
     @abstractmethod
     def _create_context(self) -> T:
@@ -157,12 +177,26 @@ class AsyncUpdater(ABC, Generic[T]):
 
         result = TaskResult()
 
+        q_size: int = 0
+        q_processed: int = 0
+        with self._lock:
+            q_size = len(self._queue)
+
         while True:
             s: SongWrapper | None = None
 
             with self._lock:
-                if len(self._queue) > 0:
+                cur_size = len(self._queue)
+
+                if cur_size > 0:
                     s = self._queue.popleft()
+
+                    if self._ui_task is not None:
+                        if cur_size != (q_size - q_processed):
+                            q_size = cur_size + q_processed
+
+                        q_processed += 1
+                        self._ui_task.update(q_processed / q_size)
 
             if s is None:
                 break
