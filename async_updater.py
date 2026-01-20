@@ -7,6 +7,7 @@
 
 import sqlite3
 import threading
+import traceback
 
 from collections import deque
 from abc import ABC, abstractmethod
@@ -195,6 +196,7 @@ class AsyncUpdater(ABC, Generic[T]):
                 err = Error(ErrorCode.DB_ERROR, str(e))
                 result.failed.append(FailedSong(s, err))
             except Exception as e:
+                traceback.print_exc()
                 print_e(f"Unhandled exception: {str(e)}")
                 err = Error(ErrorCode.ERROR, str(e))
                 result.failed.append(FailedSong(s, err))

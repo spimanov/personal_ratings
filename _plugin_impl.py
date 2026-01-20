@@ -19,7 +19,6 @@ from .errors import Error, ErrorCode
 from .helpers import (
     FPContext,
     are_not_equal,
-    is_exportable,
     is_updatable,
     rating_to_float,
     rating_to_int,
@@ -42,12 +41,9 @@ class AsyncUpdChanged(AsyncUpdater[FPContext]):
     @override
     def _processor(self, ctx: FPContext, song: SongWrapper) -> bool | Error:
 
-        db_record: DBRecord | None = None
-        fp_id: int
-        basename: str
-        rating: int
-
-        # Ensure the fingerprint of the song
+        # Update is called for a song, which does not have fingerprint
+        # it is possible if: fingerprint was not generated or file was changed
+        # (in case of changed file, QL creates new song item and drops all custom tags)
         if attrs.FP_ID not in song:
             filename = song[attrs.FILENAME]
 
@@ -59,37 +55,61 @@ class AsyncUpdChanged(AsyncUpdater[FPContext]):
                 self._config.db_path, self._config.sqlite_ext_lib, fp.hash(), 3
             )
 
+            db_record: DBRecord | None = None
             # Is the song already in the PRDB?
             for r in db_records:
                 if r.fp == fp:
                     db_record = r
                     break
 
-            # It's new fingeprint, updating of other QL-songs is not needed - return False
             if db_record is None:
+                # It's new fingeprint in the PRDB
                 basename: str = song(attrs.BASENAME)
-                rating: int = rating_to_int(song(attrs.RATING))
-                db_record = prdb.add_song(self._config.db_path, basename, rating, fp)
+                if attrs.RATING in song:
+                    rating: int = rating_to_int(song(attrs.RATING))
+                    db_record = prdb.add_song(self._config.db_path, basename, rating, fp)
+                    print_d(
+                        f"OnChange: added new FP: {db_record.fp_id} for {filename},"
+                        f" rating: {rating}"
+                    )
+                else:
+                    db_record = prdb.add_empty_song(self._config.db_path, basename, fp)
+                    print_d(f"OnChange: added new FP: {db_record.fp_id} for {filename}")
+
                 song[attrs.FP_ID] = db_record.fp_id
-                print_d(f"Changed (new): {filename}, rating: {rating}")
+                # This is the first song in the PRDB, thus there are no songs with the
+                # same Fingerprint in the QLDB. So, nothing to update - return False
                 return False
 
-            # The fingerprint is already in the DB, update the song by values from the DB
+            # The fingerprint is already in the DB, update the song rating by the value from the DB
             song[attrs.FP_ID] = db_record.fp_id
 
-            fp_id = db_record.fp_id
-        else:
-            fp_id = song[attrs.FP_ID]
+            if db_record.updated_at is not None:
+                song[attrs.RATING] = rating_to_float(db_record.rating)
+                print_d(
+                    f"OnChange: existing FP: {db_record.fp_id} for {filename}, rating:"
+                    f" {db_record.rating}"
+                )
+            else:
+                print_d(f"OnChange: existing FP: {db_record.fp_id} for {filename}")
+
+            return False
+
 
         basename = song(attrs.BASENAME)
-        rating = rating_to_int(song(attrs.RATING))
-        if prdb.update_song_if_different(self._config.db_path, fp_id, basename, rating):
-            # The DB record has been updated, it is needed to update duplicated songs
-            # in the QLDB
-            print_d(f"Changed and updated: {basename}, rating: {rating}")
-            return True
+        print_d(f"OnChange: 2 for {basename}")
+        if attrs.RATING in song:
+            fp_id = song[attrs.FP_ID]
+            rating = rating_to_int(song(attrs.RATING))
+            if prdb.update_song_if_different(
+                self._config.db_path, fp_id, basename, rating
+            ):
+                # The DB record has been updated, it is needed to update duplicated songs
+                # in the QLDB
+                print_d(f"OnChange: updated: {basename}, rating: {rating}")
+                return True
 
-        print_d(f"Changed but NOT updated: {basename}, rating: {rating}")
+        print_d(f"OnChange: not updated: {basename}")
         return False
 
     @override
@@ -150,7 +170,7 @@ class AsyncUpdAdded(AsyncUpdater[FPContext]):
         db_records = prdb.get_songs_by_hash(
             self._config.db_path, self._config.sqlite_ext_lib, fp.hash(), 3
         )
-        print_d(f"There are {len(db_records)} records in  the QLDB with same hash")
+        print_d(f"There are {len(db_records)} records in the PRDB with same hash")
 
         db_record: DBRecord | None = None
         # Is the song already in the PRDB?
@@ -165,12 +185,15 @@ class AsyncUpdAdded(AsyncUpdater[FPContext]):
             basename: str = song(attrs.BASENAME)
             db_record = prdb.add_empty_song(self._config.db_path, basename, fp)
             song[attrs.FP_ID] = db_record.fp_id
-            print_d(f"Added new: {filename}")
+            print_d(f"OnAdd: new: {filename}")
             return True
 
         song[attrs.FP_ID] = db_record.fp_id
-        song[attrs.RATING] = rating_to_float(db_record.rating)
-        print_d(f"Added (existing): {filename}, rating: {db_record.rating}")
+        if db_record.updated_at is not None:
+            song[attrs.RATING] = rating_to_float(db_record.rating)
+            print_d(f"OnAdd: (existing): {filename}, rating: {db_record.rating}")
+        else:
+            print_d(f"OnAdd: (existing): {filename}")
 
         return True
 
@@ -220,7 +243,7 @@ class PluginImpl:
             print_d(s[attrs.FILENAME])
 
         # Reduce songs list and get applicable
-        songs_to_update = [song for song in songs if is_exportable(song)]
+        songs_to_update = [song for song in songs if is_updatable(song)]
 
         print_d(f"len(songs_to_update): {len(songs_to_update)}")
 
