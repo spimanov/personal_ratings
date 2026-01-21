@@ -5,6 +5,7 @@
 # the Free Software Foundation; either version 2 of the License, or
 # (at your option) any later version.
 
+import traceback
 import sqlite3
 import time
 
@@ -288,6 +289,7 @@ class DlgBase(ABC, Generic[T]):
                 count_batch = self._batch_size
 
             except Exception as e:
+                traceback.print_exc()
                 print_e(f"Exc: {str(e)}")
                 res = Error(ErrorCode.ERROR, str(e))
                 # send notification about the error  immediately

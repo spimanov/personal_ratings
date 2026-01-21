@@ -24,20 +24,7 @@ from .helpers import FPContext, is_updatable, rating_to_float, rating_to_int
 
 class Dlg(DlgBase):
     def __init__(self, config: Config, parent: Gtk.Window, library: SongLibrary):
-        super().__init__("dlg_process.glade", config, parent, library)
-
-    @override
-    def _init_ui(self, parent: Gtk.Window, builder: Gtk.Builder) -> None:
-        super()._init_ui(parent, builder)
-        self._force_import_cb = cast(Gtk.CheckButton, builder.get_object("force"))
-        self._force_import_cb.set_label("Force import from PRDB to QLDB")
-        self._force_import_cb.set_tooltip_text(
-            "If set, records in the Quodlibet DB will be overwritten by records from"
-            " the PRDB despite the actual records timestamps."
-            " If the flag is not set, only records with newer timestamps"
-            " will be updated. In any case, only those records that exist in both DBs"
-            " are updated."
-        )
+        super().__init__("dlg_proc_dups.glade", config, parent, library)
 
     @override
     def _create_context(self) -> FPContext:
@@ -45,6 +32,7 @@ class Dlg(DlgBase):
 
     @override
     def _get_songs_to_process(self, ctx: FPContext) -> Songs:
+
         total_songs = len(self._library)
         self._count_songs_to_process = total_songs
 
@@ -56,7 +44,6 @@ class Dlg(DlgBase):
 
         # Find songs to process
         songs: deque[SongWrapper] = deque()
-        self._force_import: bool = self._force_import_cb.get_active()
 
         for s in self._library.values():
             if is_updatable(s):
@@ -90,20 +77,16 @@ class Dlg(DlgBase):
             return Error(ErrorCode.FINGERPRINT_ERROR)
 
         fp_id = song[attrs.FP_ID]
-        rating = rating_to_int(song(attrs.RATING))
-        ts = 0
-        if "~#laststarted" in song:
-            ts = song("~#laststarted")
 
         rec = prdb.get_song(self._config.db_path, fp_id)
 
-        rec_ts = rec.timestamp()
+        if rec.updated_at is None:
+            return False
 
-        if self._force_import or (ts < rec_ts):
-            if rating != rec.rating:
-                if rating != rec.rating:
-                    song[attrs.RATING] = rating_to_float(rec.rating)
-                song["~#laststarted"] = rec_ts
-                return True
+        if attrs.RATING in song:
+            rating = rating_to_int(song(attrs.RATING))
+            if rating == rec.rating:
+                return False
 
-        return False
+        song[attrs.RATING] = rating_to_float(rec.rating)
+        return True

@@ -97,7 +97,7 @@ class AsyncUpdChanged(AsyncUpdater[FPContext]):
 
 
         basename = song(attrs.BASENAME)
-        print_d(f"OnChange: 2 for {basename}")
+
         if attrs.RATING in song:
             fp_id = song[attrs.FP_ID]
             rating = rating_to_int(song(attrs.RATING))

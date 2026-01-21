@@ -9,6 +9,7 @@
 import gi
 import re
 import time
+import traceback
 
 gi.require_version("Gtk", "3.0")
 from gi.repository import Gtk
@@ -201,11 +202,14 @@ class Dlg(DlgBase):
             if recr is None:
                 to_addr.append(recl)
             else:
-                if (
-                    are_equal(recl.rating, recr.rating)
-                    and recl.updated_at == recr.updated_at
+                if ((recl.updated_at is None) and (recr.updated_at is None)) or (
+                    (recl.updated_at is not None)
+                    and (recr.updated_at is not None)
+                    and (recl.updated_at == recr.updated_at)
+                    and are_equal(recl.rating, recr.rating)
                 ):
                     continue
+
                 l_ts = recl.timestamp()
                 r_ts = recr.timestamp()
                 if l_ts < r_ts:
@@ -236,11 +240,14 @@ class Dlg(DlgBase):
             if recl is None:
                 to_addl.append(recr)
             else:
-                if (
-                    are_equal(recl.rating, recr.rating)
-                    and recl.updated_at == recr.updated_at
+                if ((recl.updated_at is None) and (recr.updated_at is None)) or (
+                    (recl.updated_at is not None)
+                    and (recr.updated_at is not None)
+                    and (recl.updated_at == recr.updated_at)
+                    and are_equal(recl.rating, recr.rating)
                 ):
                     continue
+
                 l_ts = recl.timestamp()
                 r_ts = recr.timestamp()
                 if l_ts < r_ts:
@@ -261,19 +268,23 @@ class Dlg(DlgBase):
         # Update record in the local DB unconditionally
         prdb.force_song_update(self._config.db_path, rec)
 
+        if rec.updated_at is None:
+            return None
+
         result: list[SongWrapper] = []
         rating = rating_to_float(rec.rating)
 
         for s in self._library.values():
-            if (not is_updatable(s)) or attrs.FP_ID not in s:
+            if (not is_updatable(s)) or (attrs.FP_ID not in s) :
                 continue
 
             fp_id = s(attrs.FP_ID)
             if fp_id != rec.fp_id:
                 continue
 
-            if are_equal(s(attrs.RATING), rating):
-                continue
+            if attrs.RATING is s:
+                if are_equal(s(attrs.RATING), rating):
+                    continue
 
             song = SongWrapper(s)
             song[attrs.RATING] = rating
@@ -400,6 +411,7 @@ class Dlg(DlgBase):
             progress.error = Error(ErrorCode.CANCELLED)
             count_batch = 1
         except Exception as e:
+            traceback.print_exc()
             err = Error(ErrorCode.ERROR, str(e))
             result.error = err
             progress.error = err

@@ -39,6 +39,7 @@ class Dlg(DlgBase[Context]):
     def _create_context(self) -> Context:
         return Context(self._cancellable)
 
+    @override
     def _get_songs_to_process(self, ctx: Context) -> Songs:
 
         total_songs = len(self._library)
