@@ -101,7 +101,7 @@ def add_empty_song(db_path: str, basename: str, fp: Fingerprint) -> DBRecord:
                 raise sqlite3.DatabaseError("add_song: insert_query returned None")
 
             (song_id,) = row
-            print_d(f"Added new song into DB: #{song_id}: '{basename}'")
+            # print_d(f"Added new song into DB {db_path}: #{song_id}: '{basename}'")
 
             return DBRecord(
                 song_id,
@@ -138,7 +138,7 @@ def add_song(db_path: str, basename: str, rating: int, fp: Fingerprint) -> DBRec
                 raise sqlite3.DatabaseError("add_song: insert_query returned None")
 
             (song_id,) = row
-            print_d(f"Added new song into DB: #{song_id}: '{basename}'")
+            # print_d(f"Added new song into DB {db_path}: #{song_id}: '{basename}'")
 
             return DBRecord(
                 song_id,
@@ -178,7 +178,7 @@ def add_record(db_path: str, rec: DBRecord) -> DBRecord:
                 raise sqlite3.DatabaseError("add_song: insert_query returned None")
 
             (song_id,) = row
-            print_d(f"Added new song into DB: #{song_id}: '{rec.basename}'")
+            # print_d(f"Added new song into DB {db_path}: #{song_id}: '{rec.basename}'")
 
             return DBRecord(
                 song_id,
@@ -211,8 +211,8 @@ def force_song_update(db_path: str, song: DBRecordBase) -> None:
                 ),
             )
             print_d(
-                f"Forcibly updated song in DB: #{song.fp_id}, rating: {song.rating},"
-                f" basename: '{song.basename}'"
+                f"Forcibly updated song in DB {db_path}: #{song.fp_id}, rating:"
+                f" {song.rating}, basename: '{song.basename}'"
             )
 
 
@@ -237,8 +237,8 @@ def update_song(db_path: str, song_id: int, basename: str, rating: int) -> bool:
 
             if cursor.rowcount > 0:
                 print_d(
-                    f"Updated song in DB: #{song_id}, rating: {rating}, basename:"
-                    f" '{basename}'"
+                    f"Updated song in DB {db_path}: #{song_id}, rating: {rating},"
+                    f" basename: '{basename}'"
                 )
                 return True
 
@@ -271,8 +271,8 @@ def update_song_if_different(
 
             if cursor.rowcount > 0:
                 print_d(
-                    f"Updated song in DB: #{song_id}, rating: {rating}, basename:"
-                    f" '{basename}'"
+                    f"Updated song in DB {db_path}: #{song_id}, rating: {rating},"
+                    f" basename: '{basename}'"
                 )
                 return True
 

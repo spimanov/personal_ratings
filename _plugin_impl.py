@@ -6,14 +6,14 @@
 # (at your option) any later version.
 
 from pathlib import Path
-from typing import override
+
+from gi.repository.Gio import Cancellable
 
 from quodlibet import app
 from quodlibet.library.song import SongLibrary
 from quodlibet.util.songwrapper import SongWrapper
 
 from . import attrs, prdb
-from .async_updater import AsyncUpdater, TaskResult
 from .config import Config
 from .errors import Error, ErrorCode
 from .helpers import (
@@ -29,17 +29,81 @@ from .trace import print_d, print_e, print_thread_id, print_w
 # Note: Check the primary QL file: quodlibet/formats/_audio.py
 
 
-class AsyncUpdChanged(AsyncUpdater[FPContext]):
+class PluginImpl:
+    _config: Config
+    _cancellable: Cancellable
+
     def __init__(self, config: Config) -> None:
-        super().__init__("on_changed", "Updating songs in PRDB...")
+        super().__init__()
         self._config = config
+        self._cancellable = Cancellable()
+        self._ctx = FPContext(self._cancellable)
 
-    @override
-    def _create_context(self) -> FPContext:
-        return FPContext(self._cancellable)
+        db_path = self._config.db_path
+        if not Path(db_path).is_file():
+            # Create new local database
+            prdb.create_db(db_path)
 
-    @override
-    def _processor(self, ctx: FPContext, song: SongWrapper) -> bool | Error:
+    def stop(self) -> None:
+        self._cancellable.cancel()
+
+    def _add_processor(self, ctx: FPContext, song: SongWrapper) -> bool | Error:
+        filename = song[attrs.FILENAME]
+
+        fp = ctx.calc(filename)
+
+        if fp is None:
+            return Error(ErrorCode.FINGERPRINT_ERROR)
+
+        db_records = prdb.get_songs_by_hash(
+            self._config.db_path, self._config.sqlite_ext_lib, fp.hash(), 1
+        )
+
+        db_record: DBRecord | None = None
+        # Is the song already in the PRDB?
+        for r in db_records:
+            if r.fp == fp:
+                db_record = r
+                break
+
+        if db_record is None:
+            # If song is really a new one (for the QLDB), add it to the PRDB, but without
+            # the song's rating
+            basename: str = song(attrs.BASENAME)
+            db_record = prdb.add_empty_song(self._config.db_path, basename, fp)
+            song[attrs.FP_ID] = db_record.fp_id
+            print_d(f"OnAdd: new: {filename}")
+            return True
+
+        # Number of records in the DB with the same hash
+        shc = ""
+        if len(db_records) > 0:
+            shc = f" (exist: {len(db_records)})"
+
+        song[attrs.FP_ID] = db_record.fp_id
+        if db_record.updated_at is not None:
+            song[attrs.RATING] = rating_to_float(db_record.rating)
+            print_d(
+                f"OnAdd:{shc}: {filename}, rating: {db_record.rating}"
+            )
+        else:
+            print_d(f"OnAdd:{shc}: {filename}")
+
+        return True
+
+    def on_added(self, songs: list[SongWrapper]) -> None:
+        print_thread_id()
+        print_d(f"len(songs): {len(songs)}")
+
+        for s in songs:
+            # print_d(s[attrs.FILENAME])
+            if not is_updatable(s):
+                continue
+            if self._cancellable.is_cancelled():
+                return
+            self._add_processor(self._ctx, s)
+
+    def _change_processor(self, ctx: FPContext, song: SongWrapper) -> bool | Error:
 
         # Update is called for a song, which does not have fingerprint
         # it is possible if: fingerprint was not generated or file was changed
@@ -95,7 +159,6 @@ class AsyncUpdChanged(AsyncUpdater[FPContext]):
 
             return False
 
-
         basename = song(attrs.BASENAME)
 
         if attrs.RATING in song:
@@ -112,125 +175,6 @@ class AsyncUpdChanged(AsyncUpdater[FPContext]):
         print_d(f"OnChange: not updated: {basename}")
         return False
 
-    @override
-    def _on_task_result_impl(self, result: TaskResult) -> bool:
-        if not result.succeeded:
-            return False
-
-        assert app.library and isinstance(app.library, SongLibrary)
-
-        # Find duplicated songs (with the same fingerprint)
-        dups: list[SongWrapper] = []
-
-        for song in result.succeeded:
-            assert attrs.FP_ID in song
-
-            fp_id = song[attrs.FP_ID]
-            rating: float = song(attrs.RATING)
-
-            for s in app.library.values():
-                if not is_updatable(s):
-                    continue
-
-                if attrs.FP_ID not in s:
-                    continue
-
-                # raings in QLDB are in float, thus dorect comparing is not applicable
-                # use Epsilon checking instead
-                if s[attrs.FP_ID] == fp_id and (s.key != song.key):
-                    if are_not_equal(s(attrs.RATING), rating):
-                        s[attrs.RATING] = rating
-                        dups.append(SongWrapper(s))
-
-        # Send notification about changed songs
-        if dups:
-            app.library.changed(dups)
-
-        return False
-
-
-class AsyncUpdAdded(AsyncUpdater[FPContext]):
-    def __init__(self, config: Config) -> None:
-        super().__init__("on_added", "Comparing fingerprints in the PRDB...")
-        self._config = config
-
-    @override
-    def _create_context(self) -> FPContext:
-        return FPContext(self._cancellable)
-
-    @override
-    def _processor(self, ctx: FPContext, song: SongWrapper) -> bool | Error:
-        filename = song[attrs.FILENAME]
-
-        fp = ctx.calc(filename)
-
-        if fp is None:
-            return Error(ErrorCode.FINGERPRINT_ERROR)
-
-        db_records = prdb.get_songs_by_hash(
-            self._config.db_path, self._config.sqlite_ext_lib, fp.hash(), 1
-        )
-        print_d(f"There are {len(db_records)} records in the PRDB with same hash")
-
-        db_record: DBRecord | None = None
-        # Is the song already in the PRDB?
-        for r in db_records:
-            if r.fp == fp:
-                db_record = r
-                break
-
-        if db_record is None:
-            # If song is really a new one (for the QLDB), add it to the PRDB, but without
-            # the song's rating
-            basename: str = song(attrs.BASENAME)
-            db_record = prdb.add_empty_song(self._config.db_path, basename, fp)
-            song[attrs.FP_ID] = db_record.fp_id
-            print_d(f"OnAdd: new: {filename}")
-            return True
-
-        song[attrs.FP_ID] = db_record.fp_id
-        if db_record.updated_at is not None:
-            song[attrs.RATING] = rating_to_float(db_record.rating)
-            print_d(f"OnAdd: (existing): {filename}, rating: {db_record.rating}")
-        else:
-            print_d(f"OnAdd: (existing): {filename}")
-
-        return True
-
-
-class PluginImpl:
-    _config: Config
-
-    _upd_changed: AsyncUpdChanged
-
-    _upd_added: AsyncUpdAdded
-
-    def __init__(self, config: Config) -> None:
-        super().__init__()
-        self._config = config
-        self._upd_changed = AsyncUpdChanged(config)
-        self._upd_added = AsyncUpdAdded(config)
-
-        db_path = self._config.db_path
-        if not Path(db_path).is_file():
-            # Create new local database
-            prdb.create_db(db_path)
-
-    def stop(self) -> None:
-        self._upd_changed.stop()
-        self._upd_added.stop()
-
-    def on_added(self, songs: list[SongWrapper]) -> None:
-        print_thread_id()
-        print_d(f"len(songs): {len(songs)}")
-        for s in songs:
-            print_d(s[attrs.FILENAME])
-
-        songs_to_add = [song for song in songs if is_updatable(song)]
-        print_d(f"len(songs_to_add): {len(songs_to_add)}")
-
-        self._upd_added.append(songs_to_add)
-
     def on_changed(self, songs: list[SongWrapper]) -> None:
         print_thread_id()
         print_d(f"len(songs): {len(songs)}")
@@ -240,15 +184,47 @@ class PluginImpl:
         # if self._cancellable.is_cancelled():
         #     return
         for s in songs:
-            print_d(s[attrs.FILENAME])
+            # print_d(s[attrs.FILENAME])
+            if not is_updatable(s):
+                continue
+            if self._cancellable.is_cancelled():
+                return
+            if self._change_processor(self._ctx, s):
+                self._on_song_updated(s)
 
-        # Reduce songs list and get applicable
-        songs_to_update = [song for song in songs if is_updatable(song)]
+    def _on_song_updated(self, song: SongWrapper) -> None:
 
-        print_d(f"len(songs_to_update): {len(songs_to_update)}")
+        assert app.library and isinstance(app.library, SongLibrary)
 
-        if len(songs_to_update) == 0:
-            # Nothing to update
-            return
+        # Find duplicated songs (with the same fingerprint)
+        dups: list[SongWrapper] = []
 
-        self._upd_changed.append(songs_to_update)
+        assert attrs.FP_ID in song
+
+        fp_id = song[attrs.FP_ID]
+        rating: float = song(attrs.RATING)
+
+        for s in app.library.values():
+            if not is_updatable(s):
+                continue
+
+            if attrs.FP_ID not in s:
+                continue
+
+            if s[attrs.FP_ID] != fp_id:
+                continue
+
+            if s.key == song.key:
+                continue
+
+            # raings in QLDB are in float, thus dorect comparing is not applicable
+            # use Epsilon checking instead
+
+            if are_not_equal(s(attrs.RATING), rating):
+                to_update = SongWrapper(s)
+                to_update[attrs.RATING] = rating
+                dups.append(to_update)
+
+        # Send notification about changed songs
+        if dups:
+            app.library.changed(dups)
