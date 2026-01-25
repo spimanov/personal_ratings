@@ -107,7 +107,7 @@ class Dlg(DlgBase):
             return Error(ErrorCode.FINGERPRINT_ERROR)
 
         db_records = prdb.get_songs_by_hash(
-            self._config.db_path, self._config.sqlite_ext_lib, fp.hash(), 3
+            self._config.db_path, self._config.sqlite_ext_lib, fp.hash(), 1
         )
 
         db_record: DBRecord | None = None

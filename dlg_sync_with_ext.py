@@ -181,7 +181,7 @@ class Dlg(DlgBase):
 
         self._count_songs_to_process = len(inl) + len(inr)
 
-        inl_copy = list(inl)
+        # inl_copy = list(inl)
 
         # ================================================================================
         # Step 1, iterate over the left (local)
@@ -202,62 +202,66 @@ class Dlg(DlgBase):
             if recr is None:
                 to_addr.append(recl)
             else:
-                if ((recl.updated_at is None) and (recr.updated_at is None)) or (
-                    (recl.updated_at is not None)
-                    and (recr.updated_at is not None)
-                    and (recl.updated_at == recr.updated_at)
-                    and are_equal(recl.rating, recr.rating)
+                if recr.updated_at is None:
+                    continue
+
+                if recl.updated_at is None:
+                    recl.rating = recr.rating
+                    recl.updated_at = recr.updated_at
+                    to_updl.append(recl)
+                    continue
+
+                if (recl.updated_at == recr.updated_at) and are_equal(
+                    recl.rating, recr.rating
                 ):
                     continue
 
-                l_ts = recl.timestamp()
-                r_ts = recr.timestamp()
-                if l_ts < r_ts:
+                if recl.updated_at < recr.updated_at:
                     recl.rating = recr.rating
-                    recl.updated_at = r_ts
+                    recl.updated_at = recr.updated_at
                     to_updl.append(recl)
                 else:
                     recr.rating = recl.rating
-                    recr.updated_at = l_ts
+                    recr.updated_at = recl.updated_at
                     to_updr.append(recr)
 
         # ================================================================================
         # Step 2, iterate over the remainings of the right (remote)
-        while len(inr):
+        # while len(inr):
 
-            if cancellable.is_cancelled():
-                raise CancelledError()
+        #     if cancellable.is_cancelled():
+        #         raise CancelledError()
 
-            recr = inr.pop(0)
+        #     recr = inr.pop(0)
 
-            if recr.timestamp() < timestamp:
-                continue
+        #     if recr.timestamp() < timestamp:
+        #         continue
 
-            recl = extract_rec(recr, inl_copy)
+        #     recl = extract_rec(recr, inl_copy)
 
-            _step(1)
+        #     _step(1)
 
-            if recl is None:
-                to_addl.append(recr)
-            else:
-                if ((recl.updated_at is None) and (recr.updated_at is None)) or (
-                    (recl.updated_at is not None)
-                    and (recr.updated_at is not None)
-                    and (recl.updated_at == recr.updated_at)
-                    and are_equal(recl.rating, recr.rating)
-                ):
-                    continue
+        #     if recl is None:
+        #         to_addl.append(recr)
+        #     else:
+        #         if ((recl.updated_at is None) and (recr.updated_at is None)) or (
+        #             (recl.updated_at is not None)
+        #             and (recr.updated_at is not None)
+        #             and (recl.updated_at == recr.updated_at)
+        #             and are_equal(recl.rating, recr.rating)
+        #         ):
+        #             continue
 
-                l_ts = recl.timestamp()
-                r_ts = recr.timestamp()
-                if l_ts < r_ts:
-                    recl.rating = recr.rating
-                    recl.updated_at = r_ts
-                    to_updl.append(recl)
-                else:
-                    recr.rating = recl.rating
-                    recr.updated_at = l_ts
-                    to_updr.append(recr)
+        #         l_ts = recl.timestamp()
+        #         r_ts = recr.timestamp()
+        #         if l_ts < r_ts:
+        #             recl.rating = recr.rating
+        #             recl.updated_at = r_ts
+        #             to_updl.append(recl)
+        #         else:
+        #             recr.rating = recl.rating
+        #             recr.updated_at = l_ts
+        #             to_updr.append(recr)
 
         self._progress.set_fraction(1.0)
         self._progress.set_text(None)
@@ -275,7 +279,7 @@ class Dlg(DlgBase):
         rating = rating_to_float(rec.rating)
 
         for s in self._library.values():
-            if (not is_updatable(s)) or (attrs.FP_ID not in s) :
+            if (not is_updatable(s)) or (attrs.FP_ID not in s):
                 continue
 
             fp_id = s(attrs.FP_ID)

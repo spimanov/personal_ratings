@@ -158,4 +158,4 @@ class Fingerprint:
         equal_ratio = match_fingerprints(self._raw_fp, other._raw_fp)
 
         # print(f"equal_ratio: {equal_ratio}")
-        return equal_ratio >= 0.90
+        return equal_ratio >= 0.80

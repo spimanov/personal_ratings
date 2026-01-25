@@ -52,7 +52,7 @@ class AsyncUpdChanged(AsyncUpdater[FPContext]):
                 return Error(ErrorCode.FINGERPRINT_ERROR)
 
             db_records = prdb.get_songs_by_hash(
-                self._config.db_path, self._config.sqlite_ext_lib, fp.hash(), 3
+                self._config.db_path, self._config.sqlite_ext_lib, fp.hash(), 1
             )
 
             db_record: DBRecord | None = None
@@ -168,7 +168,7 @@ class AsyncUpdAdded(AsyncUpdater[FPContext]):
             return Error(ErrorCode.FINGERPRINT_ERROR)
 
         db_records = prdb.get_songs_by_hash(
-            self._config.db_path, self._config.sqlite_ext_lib, fp.hash(), 3
+            self._config.db_path, self._config.sqlite_ext_lib, fp.hash(), 1
         )
         print_d(f"There are {len(db_records)} records in the PRDB with same hash")
 
