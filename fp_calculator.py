@@ -328,6 +328,32 @@ class FingerprintCalculator:
         self.close()
 
 
+def check_blobs():
+    filename1 = os.path.expanduser("~/Downloads/QLDB_WORK_260128/b8807")
+    filename2 = os.path.expanduser("~/Downloads/QLDB_WORK_260128/b8806")
+    with open(filename1, 'rb') as f:
+        b1 = f.read()
+    with open(filename2, 'rb') as f:
+        b2 = f.read()
+
+    fp1 = Fingerprint(b1, None)
+    fp2 = Fingerprint(b2, None)
+
+    h1 = fp1._hash
+    h2 = fp2._hash
+    print("hash 1:", h1)
+    print("hash 2:", h2)
+
+    print("dist 1-2:", hamming_distance(h1, h2))
+    print("dist 2-1:", hamming_distance(h2, h1))
+
+    equal_ratio1 = match_fingerprints(fp1._raw_fp, fp2._raw_fp)
+    equal_ratio2 = match_fingerprints(fp2._raw_fp, fp1._raw_fp)
+
+    print("ratio: 1-2:", equal_ratio1)
+    print("ratio: 2-1:", equal_ratio2)
+
+
 if __name__ == "__main__":
     # gst-launch-1.0 -m filesrc location=~/Music/2listen/1.mp3 ! decodebin ! audioconvert ! chromaprint ! fakesink
     # To open in IDE:
@@ -344,8 +370,8 @@ if __name__ == "__main__":
         with FingerprintCalculator(cancellable) as pipe:
             # filename1 = os.path.expanduser("~/Music/2listen/1.mp3")
             # filename2 = os.path.expanduser("~/Music/2listen/2.mp3")
-            filename1 = os.path.expanduser("/archive/music/eng rock/Dire Straits - Romeo And Juliet.mp3")
-            filename2 = os.path.expanduser("/archive/music_tmp/Dire Straits - Romeo And Juliet.mp3")
+            filename1 = os.path.expanduser("/archive/music/electronic/trance/Robert Miles - Children (Ross Miles Edit).mp3")
+            filename2 = os.path.expanduser("/archive/music_tmp/Robert Miles - Children (Ross Miles Edit).mp3")
             print("Start")
             fp1_base64 = pipe.calc(filename1)
             print("fp1 done")

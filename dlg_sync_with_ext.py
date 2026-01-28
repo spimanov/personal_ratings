@@ -199,11 +199,15 @@ class Dlg(DlgBase):
 
             _step(2)
 
+
             if recr is None:
                 to_addr.append(recl)
-            else:
-                if recr.updated_at is None:
-                    continue
+                continue
+
+            if (recl.updated_at is None) and (recr.updated_at is None):
+                continue
+
+            if recr.updated_at is not None:
 
                 if recl.updated_at is None:
                     recl.rating = recr.rating
@@ -220,10 +224,13 @@ class Dlg(DlgBase):
                     recl.rating = recr.rating
                     recl.updated_at = recr.updated_at
                     to_updl.append(recl)
-                else:
-                    recr.rating = recl.rating
-                    recr.updated_at = recl.updated_at
-                    to_updr.append(recr)
+                    continue
+
+            recr.rating = recl.rating
+            recr.updated_at = recl.updated_at
+            to_updr.append(recr)
+
+        # end while len(inl)
 
         # ================================================================================
         # Step 2, iterate over the remainings of the right (remote)
@@ -348,7 +355,7 @@ class Dlg(DlgBase):
             if cancellable.is_cancelled():
                 raise CancelledError()
 
-            self._async_log("Comparing databases...")
+            self._async_log(f"Comparing databases... (timestamp: {timestamp})")
             to_addl, to_updl, to_addr, to_updr = self._get_diff(
                 loc, ext, timestamp, cancellable
             )
