@@ -15,7 +15,7 @@ sudo pacman -S gst-plugins-base gst-plugins-good gst-plugins-bad gst-plugins-ugl
 import time
 
 import gi
-
+gi.require_version('PangoCairo', '1.0')
 gi.require_version("Gst", "1.0")
 # gi.require_version("Gtk", "3.0")
 
@@ -28,7 +28,7 @@ from types import TracebackType
 from quodlibet.util import print_e
 
 from .fp_decompressor import FingerprintDecompressor
-from .fingerprint import Fingerprint, hamming_distance
+from .fingerprint import Fingerprint, hamming_distance, match_fingerprints
 
 
 class FPCalcError(Exception):
@@ -333,6 +333,7 @@ if __name__ == "__main__":
     # To open in IDE:
     # PYTHONPATH="${HOME}/tools/quodlibet/quodlibet:$PYTHONPATH" vim fp_calculator.py
     # To run:
+    # cd ..
     # PYTHONPATH="${HOME}/tools/quodlibet/quodlibet:$PYTHONPATH" python -m personal_ratings.fp_calculator
     import os
 
@@ -341,33 +342,36 @@ if __name__ == "__main__":
         cancellable = Cancellable()
 
         with FingerprintCalculator(cancellable) as pipe:
-            filename1 = os.path.expanduser("~/Music/2listen/1.mp3")
-            filename2 = os.path.expanduser("~/Music/2listen/2.mp3")
-            filename3 = os.path.expanduser("~/Music/2listen/3.mp3")
+            # filename1 = os.path.expanduser("~/Music/2listen/1.mp3")
+            # filename2 = os.path.expanduser("~/Music/2listen/2.mp3")
+            filename1 = os.path.expanduser("/archive/music/eng rock/Dire Straits - Romeo And Juliet.mp3")
+            filename2 = os.path.expanduser("/archive/music_tmp/Dire Straits - Romeo And Juliet.mp3")
             print("Start")
             fp1_base64 = pipe.calc(filename1)
             print("fp1 done")
             fp2_base64 = pipe.calc(filename2)
             print("fp2 done")
-            fp3_base64 = pipe.calc(filename3)
-            print("fp3 done")
 
             dec = FingerprintDecompressor()
             fp1 = Fingerprint.from_base64(fp1_base64, dec)
             fp2 = Fingerprint.from_base64(fp2_base64, dec)
-            fp3 = Fingerprint.from_base64(fp3_base64, dec)
 
             print("f1 == f2 ?", fp1 == fp2)
-            print("f1 == f3 ?", fp1 == fp3)
-            print("f2 == f3 ?", fp2 == fp3)
+            print("f2 == f1 ?", fp2 == fp1)
 
-            h1 = fp1.hash()
-            h2 = fp2.hash()
-            h3 = fp3.hash()
+            h1 = fp1._hash
+            h2 = fp2._hash
+            print("hash 1:", h1)
+            print("hash 2:", h2)
 
-            print("dist 1-2:", hamming_distance(h1, h2))  # 18
-            print("dist 1-3:", hamming_distance(h1, h3))  # 0
-            print("dist 2-3:", hamming_distance(h2, h3))  # 18
+            print("dist 1-2:", hamming_distance(h1, h2))
+            print("dist 2-1:", hamming_distance(h2, h1))
+
+            equal_ratio1 = match_fingerprints(fp1._raw_fp, fp2._raw_fp)
+            equal_ratio2 = match_fingerprints(fp2._raw_fp, fp1._raw_fp)
+
+            print("ratio: 1-2:", equal_ratio1)
+            print("ratio: 2-1:", equal_ratio2)
 
     except Exception as err:
         print_e(f"Unhandled exception: {err}")
