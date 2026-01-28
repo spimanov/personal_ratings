@@ -181,7 +181,7 @@ class Dlg(DlgBase):
 
         self._count_songs_to_process = len(inl) + len(inr)
 
-        # inl_copy = list(inl)
+        inl_copy = list(inl)
 
         # ================================================================================
         # Step 1, iterate over the left (local)
@@ -234,41 +234,48 @@ class Dlg(DlgBase):
 
         # ================================================================================
         # Step 2, iterate over the remainings of the right (remote)
-        # while len(inr):
+        while len(inr):
 
-        #     if cancellable.is_cancelled():
-        #         raise CancelledError()
+            if cancellable.is_cancelled():
+                raise CancelledError()
 
-        #     recr = inr.pop(0)
+            recr = inr.pop(0)
 
-        #     if recr.timestamp() < timestamp:
-        #         continue
+            if recr.timestamp() < timestamp:
+                continue
 
-        #     recl = extract_rec(recr, inl_copy)
+            recl = extract_rec(recr, inl_copy)
 
-        #     _step(1)
+            _step(1)
 
-        #     if recl is None:
-        #         to_addl.append(recr)
-        #     else:
-        #         if ((recl.updated_at is None) and (recr.updated_at is None)) or (
-        #             (recl.updated_at is not None)
-        #             and (recr.updated_at is not None)
-        #             and (recl.updated_at == recr.updated_at)
-        #             and are_equal(recl.rating, recr.rating)
-        #         ):
-        #             continue
+            if recl is None:
+                continue
 
-        #         l_ts = recl.timestamp()
-        #         r_ts = recr.timestamp()
-        #         if l_ts < r_ts:
-        #             recl.rating = recr.rating
-        #             recl.updated_at = r_ts
-        #             to_updl.append(recl)
-        #         else:
-        #             recr.rating = recl.rating
-        #             recr.updated_at = l_ts
-        #             to_updr.append(recr)
+            if (recl.updated_at is None) and (recr.updated_at is None):
+                continue
+
+            if recl.updated_at is not None:
+
+                if recr.updated_at is None:
+                    recr.rating = recl.rating
+                    recr.updated_at = recl.updated_at
+                    to_updr.append(recr)
+                    continue
+
+                if (recl.updated_at == recr.updated_at) and are_equal(
+                    recl.rating, recr.rating
+                ):
+                    continue
+
+                if recr.updated_at < recl.updated_at:
+                    recr.rating = recl.rating
+                    recr.updated_at = recl.updated_at
+                    to_updr.append(recr)
+                    continue
+
+            recl.rating = recr.rating
+            recl.updated_at = recr.updated_at
+            to_updl.append(recl)
 
         self._progress.set_fraction(1.0)
         self._progress.set_text(None)
